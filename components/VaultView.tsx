@@ -339,13 +339,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     };
   }, [clearPendingHostPanelReset]);
 
-  useEffect(() => {
-    return () => {
-      clearPendingGroupPanelReset();
-      clearPendingGroupPanelOpen();
-    };
-  }, [clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
-
   // Group panel state
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
   const [editingGroupPath, setEditingGroupPath] = useState<string | null>(null);
@@ -386,6 +379,13 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       groupPanelResetTimeoutRef.current = null;
     }, INLINE_ASIDE_PANEL_ANIMATION_MS);
   }, [clearGroupPanelDraft, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+
+  useEffect(() => {
+    return () => {
+      clearPendingGroupPanelReset();
+      clearPendingGroupPanelOpen();
+    };
+  }, [clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
 
   // Compute inherited group defaults for the host being edited
   const editingHostGroupDefaults = useMemo(() => {
