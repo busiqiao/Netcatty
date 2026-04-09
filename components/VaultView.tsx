@@ -146,27 +146,6 @@ const useDeferredPanelPresence = (open: boolean, skipCloseDelay = false) => {
   return open || present;
 };
 
-const useDelayedBoolean = (value: boolean, delayMs: number) => {
-  const [delayedValue, setDelayedValue] = useState(value);
-
-  useEffect(() => {
-    if (value) {
-      setDelayedValue(true);
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setDelayedValue(false);
-    }, delayMs);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [delayMs, value]);
-
-  return delayedValue;
-};
-
 // Props without isActive - it's now subscribed internally
 interface VaultViewProps {
   hosts: Host[];
@@ -1800,11 +1779,18 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     isHostsSectionActive && isGroupPanelOpen && !!editingGroupPath,
     isSwitchingGroupToHost,
   );
-  const isHostsHeaderCompact = useDelayedBoolean(isHostsSidePanelActive, 50);
+  const [isHostsHeaderCompact, setIsHostsHeaderCompact] = useState(isHostsSidePanelActive);
+  useEffect(() => {
+    if (isMainHostsFrozen) return;
+    setIsHostsHeaderCompact(isHostsSidePanelActive);
+  }, [isHostsSidePanelActive, isMainHostsFrozen]);
   const disableHostPanelInitialInlineAnimation = isSwitchingGroupToHost;
   const disableGroupPanelInitialInlineAnimation = isSwitchingHostToGroup;
   const hostsHeaderTransitionClass =
     "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[430ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
+  const hostsHeaderMotionClass = isMainHostsFrozen
+    ? "transition-none"
+    : hostsHeaderTransitionClass;
   const hasSearchValue = search.trim().length > 0;
   const splitViewGridStyle = {
     gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))",
@@ -2107,14 +2093,14 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           <div
             className={cn(
               "h-14 px-4 py-2 flex min-w-0 items-center app-no-drag",
-              hostsHeaderTransitionClass,
+              hostsHeaderMotionClass,
               isHostsHeaderCompact ? "gap-2" : "gap-3",
             )}
           >
             <div
               className={cn(
                 "flex min-w-0 flex-1 items-center",
-                hostsHeaderTransitionClass,
+                hostsHeaderMotionClass,
                 isHostsHeaderCompact ? "gap-2" : "gap-3",
               )}
             >
@@ -2127,7 +2113,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                   placeholder={t("vault.hosts.search.placeholder")}
                   className={cn(
                     "pl-9 bg-secondary border-border/60 text-sm",
-                    hostsHeaderTransitionClass,
+                    hostsHeaderMotionClass,
                     isHostsHeaderCompact ? "h-9 pr-[84px]" : "h-10 pr-[90px]",
                     isSearchQuickConnect &&
                     "border-primary/50 ring-1 ring-primary/20",
@@ -2141,7 +2127,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                   variant="ghost"
                   className={cn(
                     "absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded-md overflow-hidden whitespace-nowrap",
-                    hostsHeaderTransitionClass,
+                    hostsHeaderMotionClass,
                     isHostsHeaderCompact ? "h-[28px] px-2 gap-1" : "h-[30px] px-2.5 gap-1.5",
                     hasSearchValue || isSearchQuickConnect
                       ? "bg-primary text-primary-foreground hover:bg-primary/90"
@@ -2160,18 +2146,18 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
             <div
               className={cn(
                 "flex min-w-0 shrink-0 items-center justify-end",
-                hostsHeaderTransitionClass,
+                hostsHeaderMotionClass,
                 isHostsHeaderCompact ? "gap-2" : "gap-3",
               )}
             >
               {/* View mode, tag filter, and sort controls */}
-              <div className={cn("flex items-center shrink-0", hostsHeaderTransitionClass, isHostsHeaderCompact ? "gap-0.5" : "gap-1")}>
+              <div className={cn("flex items-center shrink-0", hostsHeaderMotionClass, isHostsHeaderCompact ? "gap-0.5" : "gap-1")}>
                 <Dropdown>
                   <DropdownTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className={cn(hostsHeaderTransitionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
+                      className={cn(hostsHeaderMotionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
                     >
                       {viewMode === "grid" ? (
                         <LayoutGrid size={16} />
@@ -2213,17 +2199,17 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                   onChange={setSelectedTags}
                   onEditTag={handleEditTag}
                   onDeleteTag={handleDeleteTag}
-                  className={cn(hostsHeaderTransitionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
+                  className={cn(hostsHeaderMotionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
                 />
                 <SortDropdown
                   value={sortMode}
                   onChange={setSortMode}
-                  className={cn(hostsHeaderTransitionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
+                  className={cn(hostsHeaderMotionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
                 />
                 <Button
                   variant={isMultiSelectMode ? "secondary" : "ghost"}
                   size="icon"
-                  className={cn(hostsHeaderTransitionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
+                  className={cn(hostsHeaderMotionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
                   onClick={() => {
                     if (isMultiSelectMode) {
                       clearHostSelection();
@@ -2240,7 +2226,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
               <div
                 className={cn(
                   "flex min-w-0 shrink-0 items-center justify-end overflow-hidden origin-right",
-                  hostsHeaderTransitionClass,
+                  hostsHeaderMotionClass,
                   isHostsHeaderCompact
                     ? "max-w-[168px] gap-1.5 translate-x-0.5"
                     : "max-w-[360px] gap-3 translate-x-0",
@@ -2252,7 +2238,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                       size="sm"
                       className={cn(
                         "rounded-r-none bg-transparent hover:bg-white/10 shadow-none overflow-hidden whitespace-nowrap",
-                        hostsHeaderTransitionClass,
+                        hostsHeaderMotionClass,
                         isHostsHeaderCompact ? "h-9 px-2.5 w-[42px]" : "h-10 px-3 w-[114px]",
                       )}
                       onClick={handleNewHost}
@@ -2263,7 +2249,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                       <span
                         className={cn(
                           "overflow-hidden whitespace-nowrap",
-                          hostsHeaderTransitionClass,
+                          hostsHeaderMotionClass,
                           isHostsHeaderCompact ? "max-w-0 opacity-0 ml-0" : "max-w-24 opacity-100 ml-2",
                         )}
                       >
@@ -2275,7 +2261,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         size="sm"
                         className={cn(
                           "rounded-l-none bg-transparent hover:bg-white/10 border-l border-primary-foreground/20 shadow-none",
-                          hostsHeaderTransitionClass,
+                          hostsHeaderMotionClass,
                           isHostsHeaderCompact ? "h-9 px-1.5" : "h-10 px-2",
                         )}
                         aria-label={t("vault.hosts.newHost")}
@@ -2321,7 +2307,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                   variant="secondary"
                   className={cn(
                     "bg-foreground/5 text-foreground hover:bg-foreground/10 border-border/40 overflow-hidden whitespace-nowrap",
-                    hostsHeaderTransitionClass,
+                    hostsHeaderMotionClass,
                     isHostsHeaderCompact ? "h-9 w-9 px-0" : "h-10 w-[106px] px-3",
                   )}
                   onClick={onCreateLocalTerminal}
@@ -2332,7 +2318,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                   <span
                     className={cn(
                       "overflow-hidden whitespace-nowrap",
-                      hostsHeaderTransitionClass,
+                      hostsHeaderMotionClass,
                       isHostsHeaderCompact ? "max-w-0 opacity-0 ml-0" : "max-w-24 opacity-100 ml-2",
                     )}
                   >
@@ -2344,7 +2330,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                   variant="secondary"
                   className={cn(
                     "bg-foreground/5 text-foreground hover:bg-foreground/10 border-border/40 overflow-hidden whitespace-nowrap",
-                    hostsHeaderTransitionClass,
+                    hostsHeaderMotionClass,
                     isHostsHeaderCompact ? "h-9 w-9 px-0" : "h-10 w-[92px] px-3",
                   )}
                   onClick={() => setIsSerialModalOpen(true)}
@@ -2355,7 +2341,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                   <span
                     className={cn(
                       "overflow-hidden whitespace-nowrap",
-                      hostsHeaderTransitionClass,
+                      hostsHeaderMotionClass,
                       isHostsHeaderCompact ? "max-w-0 opacity-0 ml-0" : "max-w-20 opacity-100 ml-2",
                     )}
                   >
