@@ -112,6 +112,7 @@ interface HostDetailsPanelProps {
   groupDefaults?: Partial<import('../domain/models').GroupConfig>;
   groupConfigs?: GroupConfig[];
   layout?: AsidePanelLayout;
+  disableInitialInlineAnimation?: boolean;
 }
 
 const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
@@ -133,6 +134,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   groupDefaults,
   groupConfigs = [],
   layout = "overlay",
+  disableInitialInlineAnimation = false,
 }) => {
   const { t } = useI18n();
   const { checkSshAgent } = useApplicationBackend();
@@ -663,6 +665,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
       onClose={onCancel}
       width="w-[340px]"
       layout={layout}
+      disableInitialInlineAnimation={disableInitialInlineAnimation}
       dataSection="host-details-panel"
       title={
         initialData ? t("hostDetails.title.details") : t("hostDetails.title.new")

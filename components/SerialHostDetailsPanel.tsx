@@ -38,6 +38,7 @@ interface SerialHostDetailsPanelProps {
   onSave: (host: Host) => void;
   onCancel: () => void;
   layout?: AsidePanelLayout;
+  disableInitialInlineAnimation?: boolean;
 }
 
 const BAUD_RATES = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
@@ -54,6 +55,7 @@ export const SerialHostDetailsPanel: React.FC<SerialHostDetailsPanelProps> = ({
   onSave,
   onCancel,
   layout = 'overlay',
+  disableInitialInlineAnimation = false,
 }) => {
   const { t } = useI18n();
   const terminalBackend = useTerminalBackend();
@@ -171,6 +173,7 @@ export const SerialHostDetailsPanel: React.FC<SerialHostDetailsPanelProps> = ({
       subtitle={initialData.label}
       className="z-40"
       layout={layout}
+      disableInitialInlineAnimation={disableInitialInlineAnimation}
       dataSection="serial-host-details-panel"
     >
       <AsidePanelContent>

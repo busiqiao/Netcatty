@@ -68,6 +68,7 @@ interface GroupDetailsPanelProps {
   onSave: (config: GroupConfig, newName?: string, newParent?: string | null) => void;
   onCancel: () => void;
   layout?: AsidePanelLayout;
+  disableInitialInlineAnimation?: boolean;
 }
 
 const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
@@ -84,6 +85,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
   onSave,
   onCancel,
   layout = "overlay",
+  disableInitialInlineAnimation = false,
 }) => {
   const { t } = useI18n();
   const availableFonts = useAvailableFonts();
@@ -453,6 +455,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
       onClose={onCancel}
       width="w-[340px]"
       dataSection="group-details-panel"
+      disableInitialInlineAnimation={disableInitialInlineAnimation}
       title={t("vault.groups.details")}
       layout={layout}
       actions={

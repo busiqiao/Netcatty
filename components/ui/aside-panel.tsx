@@ -50,6 +50,7 @@ interface AsidePanelProps {
      * root. Used as a targeting hook for Custom CSS (Settings → Appearance).
      */
     dataSection?: string;
+    disableInitialInlineAnimation?: boolean;
 }
 
 interface AsidePanelHeaderProps {
@@ -183,15 +184,20 @@ interface AsidePanelStackProps {
      * root. Used as a targeting hook for Custom CSS.
      */
     dataSection?: string;
+    disableInitialInlineAnimation?: boolean;
 }
 
 export type AsidePanelLayout = 'overlay' | 'inline';
 export const INLINE_ASIDE_PANEL_ANIMATION_MS = 430;
 
-const useInlinePanelPresence = (open: boolean, layout: AsidePanelLayout) => {
+const useInlinePanelPresence = (
+    open: boolean,
+    layout: AsidePanelLayout,
+    disableInitialInlineAnimation = false,
+) => {
     const isInline = layout === 'inline';
     const [isMounted, setIsMounted] = useState(open);
-    const [isVisible, setIsVisible] = useState(false);
+    const [isVisible, setIsVisible] = useState(() => open && disableInitialInlineAnimation);
 
     useEffect(() => {
         if (!isInline) {
@@ -205,6 +211,10 @@ const useInlinePanelPresence = (open: boolean, layout: AsidePanelLayout) => {
 
         if (open) {
             setIsMounted(true);
+            if (!isMounted && disableInitialInlineAnimation) {
+                setIsVisible(true);
+                return;
+            }
             frameId = window.requestAnimationFrame(() => {
                 setIsVisible(true);
             });
@@ -223,7 +233,7 @@ const useInlinePanelPresence = (open: boolean, layout: AsidePanelLayout) => {
                 window.clearTimeout(timeoutId);
             }
         };
-    }, [isInline, isMounted, open]);
+    }, [disableInitialInlineAnimation, isInline, isMounted, open]);
 
     return {
         isMounted: isInline ? isMounted : open,
@@ -255,9 +265,10 @@ export const AsidePanelStack: React.FC<AsidePanelStackProps> = ({
     width = 'w-[380px]',
     layout = 'overlay',
     dataSection,
+    disableInitialInlineAnimation = false,
 }) => {
     const [stack, setStack] = useState<AsideContentItem[]>([initialItem]);
-    const { isMounted, dataState } = useInlinePanelPresence(open, layout);
+    const { isMounted, dataState } = useInlinePanelPresence(open, layout, disableInitialInlineAnimation);
 
     const push = useCallback((item: AsideContentItem) => {
         setStack(prev => [...prev, item]);
@@ -353,8 +364,9 @@ export const AsidePanel: React.FC<AsidePanelProps> = ({
     width = 'w-[380px]',
     layout = 'overlay',
     dataSection,
+    disableInitialInlineAnimation = false,
 }) => {
-    const { isMounted, dataState } = useInlinePanelPresence(open, layout);
+    const { isMounted, dataState } = useInlinePanelPresence(open, layout, disableInitialInlineAnimation);
 
     if (!isMounted) return null;
 

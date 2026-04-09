@@ -29,7 +29,7 @@ import {
   Usb,
   X,
 } from "lucide-react";
-import React, { Suspense, lazy, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../application/i18n/I18nProvider";
 import { useStoredViewMode } from "../application/state/useStoredViewMode";
 import { useStoredBoolean } from "../application/state/useStoredBoolean";
@@ -109,12 +109,24 @@ type DropTarget =
   | { kind: "root" }
   | { kind: "group"; path: string };
 
-const useDeferredPanelPresence = (open: boolean) => {
+type CardRectSnapshot = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+const useDeferredPanelPresence = (open: boolean, skipCloseDelay = false) => {
   const [present, setPresent] = useState(open);
 
   useEffect(() => {
     if (open) {
       setPresent(true);
+      return;
+    }
+
+    if (skipCloseDelay) {
+      setPresent(false);
       return;
     }
 
@@ -125,9 +137,13 @@ const useDeferredPanelPresence = (open: boolean) => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [open]);
+  }, [open, skipCloseDelay]);
 
-  return present;
+  if (skipCloseDelay && !open) {
+    return false;
+  }
+
+  return open || present;
 };
 
 const useDelayedBoolean = (value: boolean, delayMs: number) => {
@@ -306,6 +322,65 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedHostIds, setSelectedHostIds] = useState<Set<string>>(new Set());
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const mainHostsGridRef = useRef<HTMLDivElement>(null);
+  const groupedHostsGridRef = useRef<HTMLDivElement>(null);
+  const pendingMainHostsCardRectsRef = useRef<Map<string, CardRectSnapshot> | null>(null);
+  const [mainHostsLockedWidth, setMainHostsLockedWidth] = useState<number | null>(null);
+  const [isMainHostsFrozen, setIsMainHostsFrozen] = useState(false);
+  const mainHostsFreezeTimeoutRef = useRef<number | null>(null);
+
+  const clearMainHostsFreezeTimers = useCallback(() => {
+    if (mainHostsFreezeTimeoutRef.current !== null) {
+      window.clearTimeout(mainHostsFreezeTimeoutRef.current);
+      mainHostsFreezeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const getActiveHostsCardsContainer = useCallback(() => {
+    if (sortMode === "group") {
+      return groupedHostsGridRef.current;
+    }
+    return mainHostsGridRef.current;
+  }, [sortMode]);
+
+  const captureMainHostsFreeze = useCallback((_nextSidePanelOpen: boolean) => {
+    if (currentSection !== "hosts" || viewMode !== "grid") {
+      setMainHostsLockedWidth(null);
+      setIsMainHostsFrozen(false);
+      clearMainHostsFreezeTimers();
+      return;
+    }
+
+    const gridEl = getActiveHostsCardsContainer();
+    if (!gridEl) return;
+
+    const currentWidth = gridEl.getBoundingClientRect().width;
+
+    clearMainHostsFreezeTimers();
+    setMainHostsLockedWidth(currentWidth);
+    setIsMainHostsFrozen(true);
+
+    mainHostsFreezeTimeoutRef.current = window.setTimeout(() => {
+      const rects = new Map<string, CardRectSnapshot>();
+      gridEl.querySelectorAll<HTMLElement>("[data-host-card-id]").forEach((cardEl) => {
+        const cardId = cardEl.dataset.hostCardId;
+        if (!cardId) return;
+        const rect = cardEl.getBoundingClientRect();
+        rects.set(cardId, {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        });
+      });
+      pendingMainHostsCardRectsRef.current = rects;
+      setMainHostsLockedWidth(null);
+      setIsMainHostsFrozen(false);
+      mainHostsFreezeTimeoutRef.current = null;
+    }, INLINE_ASIDE_PANEL_ANIMATION_MS);
+  }, [clearMainHostsFreezeTimers, currentSection, getActiveHostsCardsContainer, viewMode]);
+
+  useEffect(() => () => clearMainHostsFreezeTimers(), [clearMainHostsFreezeTimers]);
 
   // Host panel state (local to hosts section)
   const [isHostPanelOpen, setIsHostPanelOpen] = useState(false);
@@ -326,20 +401,22 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, []);
 
   const openHostPanel = useCallback((host: Host | null, groupPath: string | null = null) => {
+    captureMainHostsFreeze(true);
     clearPendingHostPanelReset();
     setEditingHost(host);
     setNewHostGroupPath(groupPath);
     setIsHostPanelOpen(true);
-  }, [clearPendingHostPanelReset]);
+  }, [captureMainHostsFreeze, clearPendingHostPanelReset]);
 
   const closeHostPanel = useCallback(() => {
+    captureMainHostsFreeze(false);
     setIsHostPanelOpen(false);
     clearPendingHostPanelReset();
     hostPanelResetTimeoutRef.current = window.setTimeout(() => {
       clearHostPanelDraft();
       hostPanelResetTimeoutRef.current = null;
     }, INLINE_ASIDE_PANEL_ANIMATION_MS);
-  }, [clearHostPanelDraft, clearPendingHostPanelReset]);
+  }, [captureMainHostsFreeze, clearHostPanelDraft, clearPendingHostPanelReset]);
 
   // Close host panel if the host being edited was deleted.
   // Track previous host IDs so we only close for actual deletions, not for
@@ -365,6 +442,8 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const [editingGroupPath, setEditingGroupPath] = useState<string | null>(null);
   const groupPanelResetTimeoutRef = useRef<number | null>(null);
   const groupPanelOpenTimeoutRef = useRef<number | null>(null);
+  const [isSwitchingHostToGroup, setIsSwitchingHostToGroup] = useState(false);
+  const [isSwitchingGroupToHost, setIsSwitchingGroupToHost] = useState(false);
 
   const clearPendingGroupPanelReset = useCallback(() => {
     if (groupPanelResetTimeoutRef.current !== null) {
@@ -385,13 +464,15 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, []);
 
   const openGroupPanel = useCallback((groupPath: string) => {
+    captureMainHostsFreeze(true);
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
     setEditingGroupPath(groupPath);
     setIsGroupPanelOpen(true);
-  }, [clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+  }, [captureMainHostsFreeze, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
 
   const closeGroupPanel = useCallback(() => {
+    captureMainHostsFreeze(false);
     setIsGroupPanelOpen(false);
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
@@ -399,7 +480,44 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       clearGroupPanelDraft();
       groupPanelResetTimeoutRef.current = null;
     }, INLINE_ASIDE_PANEL_ANIMATION_MS);
-  }, [clearGroupPanelDraft, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+  }, [captureMainHostsFreeze, clearGroupPanelDraft, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+
+  const switchHostPanelToGroup = useCallback((groupPath: string) => {
+    captureMainHostsFreeze(true);
+    clearPendingHostPanelReset();
+    clearPendingGroupPanelReset();
+    clearPendingGroupPanelOpen();
+    setIsSwitchingHostToGroup(true);
+    setIsHostPanelOpen(false);
+    clearHostPanelDraft();
+    setEditingGroupPath(groupPath);
+    setIsGroupPanelOpen(true);
+  }, [
+    captureMainHostsFreeze,
+    clearHostPanelDraft,
+    clearPendingGroupPanelOpen,
+    clearPendingGroupPanelReset,
+    clearPendingHostPanelReset,
+  ]);
+
+  const switchGroupPanelToHost = useCallback((host: Host | null, groupPath: string | null = null) => {
+    captureMainHostsFreeze(true);
+    clearPendingHostPanelReset();
+    clearPendingGroupPanelReset();
+    clearPendingGroupPanelOpen();
+    setIsSwitchingGroupToHost(true);
+    setIsGroupPanelOpen(false);
+    clearGroupPanelDraft();
+    setEditingHost(host);
+    setNewHostGroupPath(groupPath);
+    setIsHostPanelOpen(true);
+  }, [
+    captureMainHostsFreeze,
+    clearGroupPanelDraft,
+    clearPendingGroupPanelOpen,
+    clearPendingGroupPanelReset,
+    clearPendingHostPanelReset,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -407,6 +525,16 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       clearPendingGroupPanelOpen();
     };
   }, [clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+
+  useEffect(() => {
+    if (!isSwitchingHostToGroup || !isGroupPanelOpen) return;
+    setIsSwitchingHostToGroup(false);
+  }, [isGroupPanelOpen, isSwitchingHostToGroup]);
+
+  useEffect(() => {
+    if (!isSwitchingGroupToHost || !isHostPanelOpen) return;
+    setIsSwitchingGroupToHost(false);
+  }, [isHostPanelOpen, isSwitchingGroupToHost]);
 
   // Compute inherited group defaults for the host being edited
   const editingHostGroupDefaults = useMemo(() => {
@@ -529,14 +657,22 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   );
 
   const handleNewHost = useCallback(() => {
-    closeGroupPanel();
+    if (isGroupPanelOpen) {
+      switchGroupPanelToHost(null, null);
+      return;
+    }
+
     openHostPanel(null, null);
-  }, [closeGroupPanel, openHostPanel]);
+  }, [isGroupPanelOpen, openHostPanel, switchGroupPanelToHost]);
 
   const handleEditHost = useCallback((host: Host) => {
-    closeGroupPanel();
+    if (isGroupPanelOpen) {
+      switchGroupPanelToHost(host);
+      return;
+    }
+
     openHostPanel(host);
-  }, [closeGroupPanel, openHostPanel]);
+  }, [isGroupPanelOpen, openHostPanel, switchGroupPanelToHost]);
 
   const handleDuplicateHost = useCallback((host: Host) => {
     // Create a copy of the host with a new ID and modified label
@@ -549,8 +685,8 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       lastConnectedAt: undefined,
     };
     // Open the edit panel with the duplicated host for modification
-    openHostPanel(duplicatedHost);
-  }, [openHostPanel, t]);
+    handleEditHost(duplicatedHost);
+  }, [handleEditHost, t]);
 
   // Export hosts to CSV
   const handleExportHosts = useCallback(() => {
@@ -1088,6 +1224,71 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     [displayedHosts, selectedGroupPath, pinnedRecentIds],
   );
 
+  useLayoutEffect(() => {
+    if (currentSection !== "hosts" || viewMode !== "grid" || sortMode === "group") {
+      pendingMainHostsCardRectsRef.current = null;
+      return;
+    }
+
+    if (isMainHostsFrozen) return;
+
+    const firstRects = pendingMainHostsCardRectsRef.current;
+    if (!firstRects || firstRects.size === 0) return;
+
+    const gridEl = mainHostsGridRef.current;
+    if (!gridEl) return;
+
+    const activeAnimations: Animation[] = [];
+
+    gridEl.querySelectorAll<HTMLElement>("[data-host-card-id]").forEach((cardEl) => {
+      const cardId = cardEl.dataset.hostCardId;
+      if (!cardId) return;
+      const firstRect = firstRects.get(cardId);
+      if (!firstRect) return;
+
+      const lastRect = cardEl.getBoundingClientRect();
+      const deltaX = firstRect.left - lastRect.left;
+      const deltaY = firstRect.top - lastRect.top;
+      const scaleX = firstRect.width / Math.max(lastRect.width, 1);
+      const scaleY = firstRect.height / Math.max(lastRect.height, 1);
+
+      if (
+        Math.abs(deltaX) < 0.5 &&
+        Math.abs(deltaY) < 0.5 &&
+        Math.abs(scaleX - 1) < 0.01 &&
+        Math.abs(scaleY - 1) < 0.01
+      ) {
+        return;
+      }
+
+      activeAnimations.push(
+        cardEl.animate(
+          [
+            {
+              transformOrigin: "top left",
+              transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`,
+            },
+            {
+              transformOrigin: "top left",
+              transform: "translate(0px, 0px) scale(1, 1)",
+            },
+          ],
+          {
+            duration: 260,
+            easing: "cubic-bezier(0.24, 0.84, 0.32, 1)",
+            fill: "both",
+          },
+        ),
+      );
+    });
+
+    pendingMainHostsCardRectsRef.current = null;
+
+    return () => {
+      activeAnimations.forEach((animation) => animation.cancel());
+    };
+  }, [displayedHosts, currentSection, isMainHostsFrozen, sortMode, viewMode]);
+
   // For tree view: apply search, tag filter, and sorting, but not group filtering
   const treeViewHosts = useMemo(() => {
     let filtered = hosts;
@@ -1402,17 +1603,12 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
 
   const handleEditGroupConfig = useCallback((groupPath: string) => {
     if (isHostPanelOpen) {
-      closeHostPanel();
-      clearPendingGroupPanelOpen();
-      groupPanelOpenTimeoutRef.current = window.setTimeout(() => {
-        openGroupPanel(groupPath);
-        groupPanelOpenTimeoutRef.current = null;
-      }, INLINE_ASIDE_PANEL_ANIMATION_MS);
+      switchHostPanelToGroup(groupPath);
       return;
     }
 
     openGroupPanel(groupPath);
-  }, [clearPendingGroupPanelOpen, closeHostPanel, isHostPanelOpen, openGroupPanel]);
+  }, [isHostPanelOpen, openGroupPanel, switchHostPanelToGroup]);
 
   const handleSaveGroupConfig = useCallback((config: GroupConfig, _newName?: string, _newParent?: string | null) => {
     const oldPath = editingGroupPath!;
@@ -1598,17 +1794,31 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     ((isGroupPanelOpen && !!editingGroupPath) || isHostPanelOpen);
   const isHostPanelPresent = useDeferredPanelPresence(
     isHostsSectionActive && isHostPanelOpen,
+    isSwitchingHostToGroup,
   );
   const isGroupPanelPresent = useDeferredPanelPresence(
     isHostsSectionActive && isGroupPanelOpen && !!editingGroupPath,
+    isSwitchingGroupToHost,
   );
   const isHostsHeaderCompact = useDelayedBoolean(isHostsSidePanelActive, 50);
+  const disableHostPanelInitialInlineAnimation = isSwitchingGroupToHost;
+  const disableGroupPanelInitialInlineAnimation = isSwitchingHostToGroup;
   const hostsHeaderTransitionClass =
     "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[430ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
   const hasSearchValue = search.trim().length > 0;
   const splitViewGridStyle = {
     gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))",
   };
+  const hostsGridAnimatedStyle =
+    viewMode === "grid"
+      ? (mainHostsLockedWidth !== null
+          ? { ...splitViewGridStyle, width: `${mainHostsLockedWidth}px` }
+          : splitViewGridStyle)
+      : undefined;
+  const frozenHostsGridClass =
+    viewMode === "grid" && isMainHostsFrozen
+      ? "overflow-clip [overflow-clip-margin:12px]"
+      : undefined;
 
   const isSameDropTarget = useCallback((a: DropTarget | null, b: DropTarget | null) => {
     if (!a || !b) return a === b;
@@ -2241,8 +2451,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         viewMode === "grid"
                           ? "grid gap-3"
                           : "flex flex-col gap-0",
+                        frozenHostsGridClass,
                       )}
-                      style={viewMode === "grid" ? splitViewGridStyle : undefined}>
+                      style={hostsGridAnimatedStyle}>
                         {pinnedHosts.map((host) => {
                           const safeHost = sanitizeHost(host);
                           const effectiveDistro = getEffectiveHostDistro(safeHost);
@@ -2254,6 +2465,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                             <ContextMenu key={host.id}>
                               <ContextMenuTrigger>
                                 <div
+                                  data-host-card-id={host.id}
                                   className={cn(
                                     "group cursor-pointer relative",
                                     viewMode === "grid"
@@ -2342,8 +2554,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         viewMode === "grid"
                           ? "grid gap-3"
                           : "flex flex-col gap-0",
+                        frozenHostsGridClass,
                       )}
-                      style={viewMode === "grid" ? splitViewGridStyle : undefined}>
+                      style={hostsGridAnimatedStyle}>
                         {recentHosts.map((host) => {
                           const safeHost = sanitizeHost(host);
                           const effectiveDistro = getEffectiveHostDistro(safeHost);
@@ -2444,8 +2657,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         viewMode === "grid"
                           ? "grid gap-3"
                           : "flex flex-col gap-0",
+                        frozenHostsGridClass,
                       )}
-                      style={viewMode === "grid" ? splitViewGridStyle : undefined}
+                      style={hostsGridAnimatedStyle}
                       onDragOver={(e) => {
                         e.preventDefault();
                       }}
@@ -2642,6 +2856,11 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                       onCopyCredentials={handleCopyCredentials}
 
                       onNewHost={(groupPath) => {
+                        if (isGroupPanelOpen) {
+                          switchGroupPanelToHost(null, groupPath || null);
+                          return;
+                        }
+
                         openHostPanel(null, groupPath || null);
                       }}
                       onNewGroup={(parentPath) => {
@@ -2667,15 +2886,26 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                       setDragOverDropTarget={setGroupDragOverDropTarget}
                     />
                   ) : sortMode === "group" && groupedDisplayHosts ? (
-                    <div className="space-y-6">
+                    <div
+                      ref={viewMode === "grid" ? groupedHostsGridRef : null}
+                      className={cn("space-y-6", frozenHostsGridClass)}
+                    >
                         {groupedDisplayHosts.map((group) => (
-                          <div key={group.name || "__ungrouped__"}>
-                            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-border/40">
-                              <FolderTree size={14} className="text-muted-foreground" />
-                              <span className="text-sm font-medium text-muted-foreground">
+                          <div
+                            key={group.name || "__ungrouped__"}
+                            className="min-w-0 overflow-hidden"
+                          >
+                            <div
+                              className="flex w-full min-w-0 max-w-full items-center gap-2 mb-3 pb-2 overflow-hidden border-b border-border/40"
+                            >
+                              <FolderTree
+                                size={14}
+                                className="shrink-0 text-muted-foreground"
+                              />
+                              <span className="min-w-0 truncate text-sm font-medium text-muted-foreground">
                                 {group.name || t("vault.groups.ungrouped")}
                               </span>
-                              <span className="text-xs text-muted-foreground/60">
+                              <span className="shrink-0 text-xs text-muted-foreground/60">
                                 ({selectedGroupPath ? group.hosts.length : group.hosts.filter((h) => !pinnedRecentIds.has(h.id)).length})
                               </span>
                             </div>
@@ -2684,8 +2914,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                                 viewMode === "grid"
                                   ? "grid gap-3"
                                   : "flex flex-col gap-0",
+                                frozenHostsGridClass,
                               )}
-                              style={viewMode === "grid" ? splitViewGridStyle : undefined}
+                              style={hostsGridAnimatedStyle}
                             >
                               {group.hosts.filter((h) => selectedGroupPath || !pinnedRecentIds.has(h.id)).map((host) => {
                                 const safeHost = sanitizeHost(host);
@@ -2807,7 +3038,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                           </div>
                         ))}
                         {groupedDisplayHosts.length === 0 && (
-                          <div className="col-span-full flex flex-col items-center justify-center py-24 text-muted-foreground">
+                          <div className="w-full flex flex-col items-center justify-center py-24 text-muted-foreground">
                             <div className="h-16 w-16 rounded-2xl bg-secondary/80 flex items-center justify-center mb-4">
                               <LayoutGrid size={32} className="opacity-60" />
                             </div>
@@ -2822,12 +3053,14 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                     </div>
                   ) : (
                     <div
+                      ref={viewMode === "grid" ? mainHostsGridRef : null}
                       className={cn(
                         viewMode === "grid"
                           ? "grid gap-3"
                           : "flex flex-col gap-0",
+                        frozenHostsGridClass,
                       )}
-                      style={viewMode === "grid" ? splitViewGridStyle : undefined}
+                      style={hostsGridAnimatedStyle}
                     >
                       {visibleDisplayedHosts.map((host) => {
                           const safeHost = sanitizeHost(host);
@@ -2946,7 +3179,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                           );
                       })}
                       {displayedHosts.length === 0 && (
-                        <div className="col-span-full flex flex-col items-center justify-center py-24 text-muted-foreground">
+                        <div className="w-full flex flex-col items-center justify-center py-24 text-muted-foreground">
                           <div className="h-16 w-16 rounded-2xl bg-secondary/80 flex items-center justify-center mb-4">
                             <LayoutGrid size={32} className="opacity-60" />
                           </div>
@@ -3078,7 +3311,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       </div>
 
       {/* Group Details Panel */}
-      {currentSection === "hosts" && isGroupPanelPresent && editingGroupPath && (
+      {currentSection === "hosts" && isGroupPanelPresent && !isSwitchingGroupToHost && editingGroupPath && (
         <GroupDetailsPanel
           open={isGroupPanelOpen}
           key={editingGroupPath}
@@ -3094,11 +3327,12 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           onSave={handleSaveGroupConfig}
           onCancel={closeGroupPanel}
           layout="inline"
+          disableInitialInlineAnimation={disableGroupPanelInitialInlineAnimation}
         />
       )}
 
       {/* Host Details Panel - positioned at VaultView root level for correct top alignment */}
-      {currentSection === "hosts" && isHostPanelPresent && editingHost?.protocol !== 'serial' && (
+      {currentSection === "hosts" && isHostPanelPresent && !isSwitchingHostToGroup && editingHost?.protocol !== 'serial' && (
         <HostDetailsPanel
           open={isHostPanelOpen}
           initialData={editingHost}
@@ -3130,11 +3364,12 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
             );
           }}
           layout="inline"
+          disableInitialInlineAnimation={disableHostPanelInitialInlineAnimation}
         />
       )}
 
       {/* Serial Host Details Panel - for editing serial port hosts */}
-      {currentSection === "hosts" && isHostPanelPresent && editingHost?.protocol === 'serial' && (
+      {currentSection === "hosts" && isHostPanelPresent && !isSwitchingHostToGroup && editingHost?.protocol === 'serial' && (
         <SerialHostDetailsPanel
           open={isHostPanelOpen}
           initialData={editingHost}
@@ -3148,6 +3383,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           }}
           onCancel={closeHostPanel}
           layout="inline"
+          disableInitialInlineAnimation={disableHostPanelInitialInlineAnimation}
         />
       )}
 
