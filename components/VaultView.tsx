@@ -130,6 +130,27 @@ const useDeferredPanelPresence = (open: boolean) => {
   return present;
 };
 
+const useDelayedBoolean = (value: boolean, delayMs: number) => {
+  const [delayedValue, setDelayedValue] = useState(value);
+
+  useEffect(() => {
+    if (value) {
+      setDelayedValue(true);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDelayedValue(false);
+    }, delayMs);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [delayMs, value]);
+
+  return delayedValue;
+};
+
 // Props without isActive - it's now subscribed internally
 interface VaultViewProps {
   hosts: Host[];
@@ -1581,9 +1602,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const isGroupPanelPresent = useDeferredPanelPresence(
     isHostsSectionActive && isGroupPanelOpen && !!editingGroupPath,
   );
-  const isHostsHeaderCompact = isHostsSidePanelActive;
+  const isHostsHeaderCompact = useDelayedBoolean(isHostsSidePanelActive, 50);
   const hostsHeaderTransitionClass =
-    "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[320ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
+    "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[430ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
   const hasSearchValue = search.trim().length > 0;
   const splitViewGridStyle = {
     gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))",
@@ -2006,7 +2027,15 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                 </Button>
               </div>
 
-              <div className={cn("flex min-w-0 shrink-0 items-center justify-end", hostsHeaderTransitionClass, isHostsHeaderCompact ? "gap-1.5" : "gap-3")}>
+              <div
+                className={cn(
+                  "flex min-w-0 shrink-0 items-center justify-end overflow-hidden origin-right",
+                  hostsHeaderTransitionClass,
+                  isHostsHeaderCompact
+                    ? "max-w-[168px] gap-1.5 translate-x-0.5"
+                    : "max-w-[360px] gap-3 translate-x-0",
+                )}
+              >
                 <Dropdown>
                   <div className="flex items-center rounded-md bg-primary text-primary-foreground">
                     <Button
@@ -2131,7 +2160,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
         {/* Keep hosts mounted so switching sections does not reset scroll or remount the list. */}
         <div
           className={cn(
-            "flex-1 min-w-0 overflow-auto px-4 py-4 space-y-6 transition-[padding] duration-[320ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]",
+            "flex-1 min-w-0 overflow-auto px-4 py-4 space-y-6 transition-[padding] duration-[430ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]",
             isHostsSidePanelActive && "pr-3",
             !isHostsSectionActive && "hidden",
           )}

@@ -186,7 +186,7 @@ interface AsidePanelStackProps {
 }
 
 export type AsidePanelLayout = 'overlay' | 'inline';
-export const INLINE_ASIDE_PANEL_ANIMATION_MS = 320;
+export const INLINE_ASIDE_PANEL_ANIMATION_MS = 430;
 
 const useInlinePanelPresence = (open: boolean, layout: AsidePanelLayout) => {
     const isInline = layout === 'inline';
