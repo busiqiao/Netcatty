@@ -339,9 +339,53 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     };
   }, [clearPendingHostPanelReset]);
 
+  useEffect(() => {
+    return () => {
+      clearPendingGroupPanelReset();
+      clearPendingGroupPanelOpen();
+    };
+  }, [clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+
   // Group panel state
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
   const [editingGroupPath, setEditingGroupPath] = useState<string | null>(null);
+  const groupPanelResetTimeoutRef = useRef<number | null>(null);
+  const groupPanelOpenTimeoutRef = useRef<number | null>(null);
+
+  const clearPendingGroupPanelReset = useCallback(() => {
+    if (groupPanelResetTimeoutRef.current !== null) {
+      window.clearTimeout(groupPanelResetTimeoutRef.current);
+      groupPanelResetTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearPendingGroupPanelOpen = useCallback(() => {
+    if (groupPanelOpenTimeoutRef.current !== null) {
+      window.clearTimeout(groupPanelOpenTimeoutRef.current);
+      groupPanelOpenTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearGroupPanelDraft = useCallback(() => {
+    setEditingGroupPath(null);
+  }, []);
+
+  const openGroupPanel = useCallback((groupPath: string) => {
+    clearPendingGroupPanelReset();
+    clearPendingGroupPanelOpen();
+    setEditingGroupPath(groupPath);
+    setIsGroupPanelOpen(true);
+  }, [clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+
+  const closeGroupPanel = useCallback(() => {
+    setIsGroupPanelOpen(false);
+    clearPendingGroupPanelReset();
+    clearPendingGroupPanelOpen();
+    groupPanelResetTimeoutRef.current = window.setTimeout(() => {
+      clearGroupPanelDraft();
+      groupPanelResetTimeoutRef.current = null;
+    }, INLINE_ASIDE_PANEL_ANIMATION_MS);
+  }, [clearGroupPanelDraft, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
 
   // Compute inherited group defaults for the host being edited
   const editingHostGroupDefaults = useMemo(() => {
@@ -464,16 +508,14 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   );
 
   const handleNewHost = useCallback(() => {
-    setIsGroupPanelOpen(false);
-    setEditingGroupPath(null);
+    closeGroupPanel();
     openHostPanel(null, null);
-  }, [openHostPanel]);
+  }, [closeGroupPanel, openHostPanel]);
 
   const handleEditHost = useCallback((host: Host) => {
-    setIsGroupPanelOpen(false);
-    setEditingGroupPath(null);
+    closeGroupPanel();
     openHostPanel(host);
-  }, [openHostPanel]);
+  }, [closeGroupPanel, openHostPanel]);
 
   const handleDuplicateHost = useCallback((host: Host) => {
     // Create a copy of the host with a new ID and modified label
@@ -1338,12 +1380,18 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   };
 
   const handleEditGroupConfig = useCallback((groupPath: string) => {
-    clearPendingHostPanelReset();
-    setIsHostPanelOpen(false);
-    clearHostPanelDraft();
-    setEditingGroupPath(groupPath);
-    setIsGroupPanelOpen(true);
-  }, [clearHostPanelDraft, clearPendingHostPanelReset]);
+    if (isHostPanelOpen) {
+      closeHostPanel();
+      clearPendingGroupPanelOpen();
+      groupPanelOpenTimeoutRef.current = window.setTimeout(() => {
+        openGroupPanel(groupPath);
+        groupPanelOpenTimeoutRef.current = null;
+      }, INLINE_ASIDE_PANEL_ANIMATION_MS);
+      return;
+    }
+
+    openGroupPanel(groupPath);
+  }, [clearPendingGroupPanelOpen, closeHostPanel, isHostPanelOpen, openGroupPanel]);
 
   const handleSaveGroupConfig = useCallback((config: GroupConfig, _newName?: string, _newParent?: string | null) => {
     const oldPath = editingGroupPath!;
@@ -1396,9 +1444,8 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       onUpdateGroupConfigs(updatedConfigs);
     }
 
-    setIsGroupPanelOpen(false);
-    setEditingGroupPath(null);
-  }, [groupConfigs, editingGroupPath, customGroups, hosts, managedSources, selectedGroupPath, onUpdateGroupConfigs, onUpdateCustomGroups, onUpdateHosts, onUpdateManagedSources, t]);
+    closeGroupPanel();
+  }, [closeGroupPanel, groupConfigs, editingGroupPath, customGroups, hosts, managedSources, selectedGroupPath, onUpdateGroupConfigs, onUpdateCustomGroups, onUpdateHosts, onUpdateManagedSources, t]);
 
   const deleteGroupPath = async (path: string, deleteHosts: boolean = false) => {
     const keepGroups = customGroups.filter(
@@ -1531,9 +1578,12 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const isHostPanelPresent = useDeferredPanelPresence(
     isHostsSectionActive && isHostPanelOpen,
   );
+  const isGroupPanelPresent = useDeferredPanelPresence(
+    isHostsSectionActive && isGroupPanelOpen && !!editingGroupPath,
+  );
   const isHostsSidePanelPresent =
     isHostsSectionActive &&
-    ((isGroupPanelOpen && !!editingGroupPath) || isHostPanelPresent);
+    (isGroupPanelPresent || isHostPanelPresent);
   const isHostsHeaderCompact = isHostsSidePanelActive;
   const hostsHeaderTransitionClass =
     "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[260ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
@@ -2163,9 +2213,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                       </h3>
                       <div className={cn(
                         viewMode === "grid"
-                          ? cn(
-                            "grid gap-3",
-                                                      )
+                          ? "grid gap-3"
                           : "flex flex-col gap-0",
                       )}
                       style={viewMode === "grid" ? splitViewGridStyle : undefined}>
@@ -2266,9 +2314,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                       </h3>
                       <div className={cn(
                         viewMode === "grid"
-                          ? cn(
-                            "grid gap-3",
-                                                      )
+                          ? "grid gap-3"
                           : "flex flex-col gap-0",
                       )}
                       style={viewMode === "grid" ? splitViewGridStyle : undefined}>
@@ -2370,9 +2416,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                       className={cn(
                         displayedGroups.length === 0 ? "hidden" : "",
                         viewMode === "grid"
-                          ? cn(
-                            "grid gap-3",
-                                                      )
+                          ? "grid gap-3"
                           : "flex flex-col gap-0",
                       )}
                       style={viewMode === "grid" ? splitViewGridStyle : undefined}
@@ -2612,9 +2656,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                             <div
                               className={cn(
                                 viewMode === "grid"
-                                  ? cn(
-                                    "grid gap-3",
-                                                                      )
+                                  ? "grid gap-3"
                                   : "flex flex-col gap-0",
                               )}
                               style={viewMode === "grid" ? splitViewGridStyle : undefined}
@@ -2756,9 +2798,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                     <div
                       className={cn(
                         viewMode === "grid"
-                          ? cn(
-                            "grid gap-3",
-                                                      )
+                          ? "grid gap-3"
                           : "flex flex-col gap-0",
                       )}
                       style={viewMode === "grid" ? splitViewGridStyle : undefined}
@@ -3012,7 +3052,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       </div>
 
       {/* Group Details Panel */}
-      {currentSection === "hosts" && isGroupPanelOpen && editingGroupPath && (
+      {currentSection === "hosts" && isGroupPanelPresent && editingGroupPath && (
         <GroupDetailsPanel
           open={isGroupPanelOpen}
           key={editingGroupPath}
@@ -3026,10 +3066,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           groupConfigs={groupConfigs}
           terminalFontSize={terminalFontSize}
           onSave={handleSaveGroupConfig}
-          onCancel={() => {
-            setIsGroupPanelOpen(false);
-            setEditingGroupPath(null);
-          }}
+          onCancel={closeGroupPanel}
           layout="inline"
         />
       )}
