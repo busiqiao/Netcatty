@@ -31,6 +31,7 @@ interface SerialPort {
 }
 
 interface SerialHostDetailsPanelProps {
+  open?: boolean;
   initialData: Host;
   allTags?: string[];
   groups?: string[];
@@ -46,6 +47,7 @@ const PARITY_OPTIONS: SerialParity[] = ['none', 'even', 'odd', 'mark', 'space'];
 const FLOW_CONTROL_OPTIONS: SerialFlowControl[] = ['none', 'xon/xoff', 'rts/cts'];
 
 export const SerialHostDetailsPanel: React.FC<SerialHostDetailsPanelProps> = ({
+  open = true,
   initialData,
   allTags = [],
   groups = [],
@@ -162,7 +164,7 @@ export const SerialHostDetailsPanel: React.FC<SerialHostDetailsPanelProps> = ({
 
   return (
     <AsidePanel
-      open={true}
+      open={open}
       onClose={onCancel}
       title={t('serial.edit.title')}
       subtitle={initialData.label}

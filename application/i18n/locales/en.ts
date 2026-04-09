@@ -521,7 +521,7 @@ const en: Messages = {
   'vault.hosts.header.live': '{count} live',
 
   // Vault hosts header/actions
-  'vault.hosts.search.placeholder': 'Find a host or ssh user@hostname / ssh -p 2222 user@hostname...',
+  'vault.hosts.search.placeholder': 'Find a host or enter ssh -p 2222 user@hostname...',
   'vault.hosts.connect': 'Connect',
   'vault.view.grid': 'Grid',
   'vault.view.list': 'List',

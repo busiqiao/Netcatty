@@ -94,6 +94,7 @@ const LINUX_DISTRO_OPTION_IDS = [
 ];
 
 interface HostDetailsPanelProps {
+  open?: boolean;
   initialData?: Host | null;
   availableKeys: SSHKey[];
   identities: Identity[];
@@ -114,6 +115,7 @@ interface HostDetailsPanelProps {
 }
 
 const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
+  open = true,
   initialData,
   availableKeys,
   identities,
@@ -515,6 +517,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   if (activeSubPanel === "create-group") {
     return (
       <CreateGroupPanel
+        open={open}
         newGroupName={newGroupName}
         setNewGroupName={setNewGroupName}
         newGroupParent={newGroupParent}
@@ -531,6 +534,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   if (activeSubPanel === "proxy") {
     return (
       <ProxyPanel
+        open={open}
         proxyConfig={form.proxyConfig}
         onUpdateProxy={updateProxyConfig}
         onClearProxy={clearProxyConfig}
@@ -544,6 +548,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   if (activeSubPanel === "chain") {
     return (
       <ChainPanel
+        open={open}
         formLabel={form.label}
         formHostname={form.hostname}
         form={form}
@@ -563,6 +568,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   if (activeSubPanel === "env-vars") {
     return (
       <EnvVarsPanel
+        open={open}
         hostLabel={form.label}
         hostHostname={form.hostname}
         environmentVariables={form.environmentVariables || []}
@@ -592,7 +598,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   if (activeSubPanel === "theme-select") {
     return (
       <ThemeSelectPanel
-        open={true}
+        open={open}
         selectedThemeId={effectiveThemeId}
         onSelect={(themeId) => {
           if (themeId === effectiveThemeId && !hasEffectiveThemeOverride) {
@@ -614,7 +620,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   if (activeSubPanel === "telnet-theme-select") {
     return (
       <ThemeSelectPanel
-        open={true}
+        open={open}
         selectedThemeId={effectiveTelnetThemeId}
         onSelect={(themeId) => {
           // Update telnet protocol theme
@@ -652,7 +658,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   // Main panel
   return (
     <AsidePanel
-      open={true}
+      open={open}
       onClose={onCancel}
       width="w-[420px]"
       layout={layout}

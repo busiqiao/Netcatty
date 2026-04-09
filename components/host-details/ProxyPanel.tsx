@@ -14,6 +14,7 @@ import { Card } from '../ui/card';
 import { Input } from '../ui/input';
 
 export interface ProxyPanelProps {
+    open?: boolean;
     proxyConfig?: ProxyConfig;
     onUpdateProxy: (field: keyof ProxyConfig, value: string | number) => void;
     onClearProxy: () => void;
@@ -23,6 +24,7 @@ export interface ProxyPanelProps {
 }
 
 export const ProxyPanel: React.FC<ProxyPanelProps> = ({
+    open = true,
     proxyConfig,
     onUpdateProxy,
     onClearProxy,
@@ -33,7 +35,7 @@ export const ProxyPanel: React.FC<ProxyPanelProps> = ({
     const { t } = useI18n();
     return (
         <AsidePanel
-            open={true}
+            open={open}
             onClose={onCancel}
             title={t('hostDetails.proxyPanel.title')}
             showBackButton={true}

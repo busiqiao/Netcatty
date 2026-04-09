@@ -28,7 +28,6 @@ import {
   Upload,
   Usb,
   X,
-  Zap,
 } from "lucide-react";
 import React, { Suspense, lazy, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../application/i18n/I18nProvider";
@@ -98,6 +97,7 @@ import { TagFilterDropdown } from "./ui/tag-filter-dropdown";
 import { toast } from "./ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "./ui/tooltip";
 import { Badge } from "./ui/badge";
+import { INLINE_ASIDE_PANEL_ANIMATION_MS } from "./ui/aside-panel";
 import { HotkeyScheme, KeyBinding } from "../domain/models";
 
 const LazyProtocolSelectDialog = lazy(() => import("./ProtocolSelectDialog"));
@@ -108,6 +108,27 @@ export type VaultSection = "hosts" | "keys" | "snippets" | "port" | "knownhosts"
 type DropTarget =
   | { kind: "root" }
   | { kind: "group"; path: string };
+
+const useDeferredPanelPresence = (open: boolean) => {
+  const [present, setPresent] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setPresent(true);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setPresent(false);
+    }, INLINE_ASIDE_PANEL_ANIMATION_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [open]);
+
+  return present;
+};
 
 // Props without isActive - it's now subscribed internally
 interface VaultViewProps {
@@ -269,6 +290,35 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const [isHostPanelOpen, setIsHostPanelOpen] = useState(false);
   const [editingHost, setEditingHost] = useState<Host | null>(null);
   const [newHostGroupPath, setNewHostGroupPath] = useState<string | null>(null);
+  const hostPanelResetTimeoutRef = useRef<number | null>(null);
+
+  const clearPendingHostPanelReset = useCallback(() => {
+    if (hostPanelResetTimeoutRef.current !== null) {
+      window.clearTimeout(hostPanelResetTimeoutRef.current);
+      hostPanelResetTimeoutRef.current = null;
+    }
+  }, []);
+
+  const clearHostPanelDraft = useCallback(() => {
+    setEditingHost(null);
+    setNewHostGroupPath(null);
+  }, []);
+
+  const openHostPanel = useCallback((host: Host | null, groupPath: string | null = null) => {
+    clearPendingHostPanelReset();
+    setEditingHost(host);
+    setNewHostGroupPath(groupPath);
+    setIsHostPanelOpen(true);
+  }, [clearPendingHostPanelReset]);
+
+  const closeHostPanel = useCallback(() => {
+    setIsHostPanelOpen(false);
+    clearPendingHostPanelReset();
+    hostPanelResetTimeoutRef.current = window.setTimeout(() => {
+      clearHostPanelDraft();
+      hostPanelResetTimeoutRef.current = null;
+    }, INLINE_ASIDE_PANEL_ANIMATION_MS);
+  }, [clearHostPanelDraft, clearPendingHostPanelReset]);
 
   // Close host panel if the host being edited was deleted.
   // Track previous host IDs so we only close for actual deletions, not for
@@ -278,12 +328,16 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     const currentIds = new Set(hosts.map(h => h.id));
     // Check against previous IDs before updating the ref
     if (editingHost && knownHostIdsRef.current.has(editingHost.id) && !currentIds.has(editingHost.id)) {
-      setIsHostPanelOpen(false);
-      setEditingHost(null);
-      setNewHostGroupPath(null);
+      closeHostPanel();
     }
     knownHostIdsRef.current = currentIds;
-  }, [hosts, editingHost]);
+  }, [hosts, editingHost, closeHostPanel]);
+
+  useEffect(() => {
+    return () => {
+      clearPendingHostPanelReset();
+    };
+  }, [clearPendingHostPanelReset]);
 
   // Group panel state
   const [isGroupPanelOpen, setIsGroupPanelOpen] = useState(false);
@@ -412,17 +466,14 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const handleNewHost = useCallback(() => {
     setIsGroupPanelOpen(false);
     setEditingGroupPath(null);
-    setEditingHost(null);
-    setNewHostGroupPath(null);
-    setIsHostPanelOpen(true);
-  }, []);
+    openHostPanel(null, null);
+  }, [openHostPanel]);
 
   const handleEditHost = useCallback((host: Host) => {
     setIsGroupPanelOpen(false);
     setEditingGroupPath(null);
-    setEditingHost(host);
-    setIsHostPanelOpen(true);
-  }, []);
+    openHostPanel(host);
+  }, [openHostPanel]);
 
   const handleDuplicateHost = useCallback((host: Host) => {
     // Create a copy of the host with a new ID and modified label
@@ -435,9 +486,8 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       lastConnectedAt: undefined,
     };
     // Open the edit panel with the duplicated host for modification
-    setEditingHost(duplicatedHost);
-    setIsHostPanelOpen(true);
-  }, [t]);
+    openHostPanel(duplicatedHost);
+  }, [openHostPanel, t]);
 
   // Export hosts to CSV
   const handleExportHosts = useCallback(() => {
@@ -1288,11 +1338,12 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   };
 
   const handleEditGroupConfig = useCallback((groupPath: string) => {
+    clearPendingHostPanelReset();
     setIsHostPanelOpen(false);
-    setEditingHost(null);
+    clearHostPanelDraft();
     setEditingGroupPath(groupPath);
     setIsGroupPanelOpen(true);
-  }, []);
+  }, [clearHostPanelDraft, clearPendingHostPanelReset]);
 
   const handleSaveGroupConfig = useCallback((config: GroupConfig, _newName?: string, _newParent?: string | null) => {
     const oldPath = editingGroupPath!;
@@ -1474,15 +1525,22 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, [managedSources]);
 
   const isHostsSectionActive = currentSection === "hosts";
-  const hasHostsSidePanel =
+  const isHostsSidePanelActive =
     isHostsSectionActive &&
     ((isGroupPanelOpen && !!editingGroupPath) || isHostPanelOpen);
-  const splitViewGridStyle = hasHostsSidePanel
-    ? {
-      gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 280px))",
-      justifyContent: "start" as const,
-    }
-    : undefined;
+  const isHostPanelPresent = useDeferredPanelPresence(
+    isHostsSectionActive && isHostPanelOpen,
+  );
+  const isHostsSidePanelPresent =
+    isHostsSectionActive &&
+    ((isGroupPanelOpen && !!editingGroupPath) || isHostPanelPresent);
+  const isHostsHeaderCompact = isHostsSidePanelActive;
+  const hostsHeaderTransitionClass =
+    "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[260ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
+  const hasSearchValue = search.trim().length > 0;
+  const splitViewGridStyle = {
+    gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))",
+  };
 
   const isSameDropTarget = useCallback((a: DropTarget | null, b: DropTarget | null) => {
     if (!a || !b) return a === b;
@@ -1768,201 +1826,257 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           )}
           data-section="vault-hosts-header"
         >
-          <div className="h-14 px-4 py-2 flex items-center gap-3">
-            <div className="relative flex-1 app-no-drag">
-              <Search
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                placeholder={t("vault.hosts.search.placeholder")}
-                className={cn(
-                  "pl-9 h-10 bg-secondary border-border/60 text-sm",
-                  isSearchQuickConnect &&
-                  "border-primary/50 ring-1 ring-primary/20",
-                )}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={handleSearchKeyDown}
-              />
-              {isSearchQuickConnect && (
-                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Zap size={14} className="text-primary" />
-                </div>
-              )}
-            </div>
-            <Button
-              variant={isSearchQuickConnect ? "default" : "secondary"}
-              className={cn(
-                "h-10 px-4 app-no-drag",
-                !isSearchQuickConnect &&
-                "bg-foreground/5 text-foreground hover:bg-foreground/10 border-border/40",
-              )}
-              onClick={handleConnectClick}
-            >
-              {t("vault.hosts.connect")}
-            </Button>
-            {/* View mode, tag filter, and sort controls */}
-            <div className="flex items-center gap-1 app-no-drag">
-              <Dropdown>
-                <DropdownTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-10 w-10 app-no-drag">
-                    {viewMode === "grid" ? (
-                      <LayoutGrid size={16} />
-                    ) : viewMode === "list" ? (
-                      <List size={16} />
-                    ) : (
-                      <Network size={16} />
-                    )}
-                    <ChevronDown size={10} className="ml-0.5" />
-                  </Button>
-                </DropdownTrigger>
-                <DropdownContent className="w-32" align="end">
-                  <Button
-                    variant={viewMode === "grid" ? "secondary" : "ghost"}
-                    className="w-full justify-start gap-2 h-9"
-                    onClick={() => setViewMode("grid")}
-                  >
-                    <LayoutGrid size={14} /> {t("vault.view.grid")}
-                  </Button>
-                  <Button
-                    variant={viewMode === "list" ? "secondary" : "ghost"}
-                    className="w-full justify-start gap-2 h-9"
-                    onClick={() => setViewMode("list")}
-                  >
-                    <List size={14} /> {t("vault.view.list")}
-                  </Button>
-                  <Button
-                    variant={viewMode === "tree" ? "secondary" : "ghost"}
-                    className="w-full justify-start gap-2 h-9"
-                    onClick={() => setViewMode("tree")}
-                  >
-                    <Network size={14} /> {t("vault.view.tree")}
-                  </Button>
-                </DropdownContent>
-              </Dropdown>
-              <TagFilterDropdown
-                allTags={allTags}
-                selectedTags={selectedTags}
-                onChange={setSelectedTags}
-                onEditTag={handleEditTag}
-                onDeleteTag={handleDeleteTag}
-                className="h-10 w-10"
-              />
-              <SortDropdown
-                value={sortMode}
-                onChange={setSortMode}
-                className="h-10 w-10"
-              />
-              <Button
-                variant={isMultiSelectMode ? "secondary" : "ghost"}
-                size="icon"
-                className="h-10 w-10"
-                onClick={() => {
-                  if (isMultiSelectMode) {
-                    clearHostSelection();
-                  } else {
-                    setIsMultiSelectMode(true);
-                  }
-                }}
-                title={t("vault.hosts.multiSelect")}
-              >
-                <CheckSquare size={16} />
-              </Button>
-            </div>
-            {/* New Host split button — collapses with an animation when the
-                host details / new-host aside panel is open, since the button
-                would be a no-op in that state. */}
+          <div
+            className={cn(
+              "h-14 px-4 py-2 flex min-w-0 items-center app-no-drag",
+              hostsHeaderTransitionClass,
+              isHostsHeaderCompact ? "gap-2" : "gap-3",
+            )}
+          >
             <div
               className={cn(
-                "flex items-center app-no-drag overflow-hidden transition-[max-width,opacity,margin] duration-200 ease-in-out",
-                isHostPanelOpen
-                  ? "max-w-0 opacity-0 -ml-2 pointer-events-none"
-                  : "max-w-[260px] opacity-100",
+                "flex min-w-0 flex-1 items-center",
+                hostsHeaderTransitionClass,
+                isHostsHeaderCompact ? "gap-2" : "gap-3",
               )}
-              aria-hidden={isHostPanelOpen}
             >
-              <Dropdown>
-                <div className="flex items-center rounded-md bg-primary text-primary-foreground">
-                  <Button
-                    size="sm"
-                    className="h-10 px-3 rounded-r-none bg-transparent hover:bg-white/10 shadow-none app-no-drag"
-                    onClick={handleNewHost}
-                    tabIndex={isHostPanelOpen ? -1 : 0}
-                  >
-                    <Plus size={14} className="mr-2" /> {t("vault.hosts.newHost")}
-                  </Button>
+              <div className="relative min-w-0 flex-1">
+                <Search
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  placeholder={t("vault.hosts.search.placeholder")}
+                  className={cn(
+                    "pl-9 bg-secondary border-border/60 text-sm",
+                    hostsHeaderTransitionClass,
+                    isHostsHeaderCompact ? "h-9 pr-[84px]" : "h-10 pr-[90px]",
+                    isSearchQuickConnect &&
+                    "border-primary/50 ring-1 ring-primary/20",
+                  )}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className={cn(
+                    "absolute right-1.5 top-1/2 z-10 -translate-y-1/2 rounded-md overflow-hidden whitespace-nowrap",
+                    hostsHeaderTransitionClass,
+                    isHostsHeaderCompact ? "h-[28px] px-2 gap-1" : "h-[30px] px-2.5 gap-1.5",
+                    hasSearchValue || isSearchQuickConnect
+                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                      : "bg-foreground/6 text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
+                  )}
+                  onClick={handleConnectClick}
+                  aria-label={t("vault.hosts.connect")}
+                  title={t("vault.hosts.connect")}
+                >
+                  <Plug size={14} className="shrink-0" />
+                  <span className="text-[11px] font-medium tracking-tight">{t("vault.hosts.connect")}</span>
+                </Button>
+              </div>
+            </div>
+
+            <div
+              className={cn(
+                "flex min-w-0 shrink-0 items-center justify-end",
+                hostsHeaderTransitionClass,
+                isHostsHeaderCompact ? "gap-2" : "gap-3",
+              )}
+            >
+              {/* View mode, tag filter, and sort controls */}
+              <div className={cn("flex items-center shrink-0", hostsHeaderTransitionClass, isHostsHeaderCompact ? "gap-0.5" : "gap-1")}>
+                <Dropdown>
                   <DropdownTrigger asChild>
                     <Button
-                      size="sm"
-                      className="h-10 px-2 rounded-l-none bg-transparent hover:bg-white/10 border-l border-primary-foreground/20 shadow-none app-no-drag"
-                      tabIndex={isHostPanelOpen ? -1 : 0}
+                      variant="ghost"
+                      size="icon"
+                      className={cn(hostsHeaderTransitionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
                     >
-                      <ChevronDown size={14} />
+                      {viewMode === "grid" ? (
+                        <LayoutGrid size={16} />
+                      ) : viewMode === "list" ? (
+                        <List size={16} />
+                      ) : (
+                        <Network size={16} />
+                      )}
+                      <ChevronDown size={10} className="ml-0.5" />
                     </Button>
                   </DropdownTrigger>
-                </div>
-                <DropdownContent className="w-44" align="end" alignToParent>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-2"
-                    onClick={() => {
-                      setTargetParentPath(selectedGroupPath);
-                      setNewFolderName("");
-                      setIsNewFolderOpen(true);
-                    }}
+                  <DropdownContent className="w-32" align="end">
+                    <Button
+                      variant={viewMode === "grid" ? "secondary" : "ghost"}
+                      className="w-full justify-start gap-2 h-9"
+                      onClick={() => setViewMode("grid")}
+                    >
+                      <LayoutGrid size={14} /> {t("vault.view.grid")}
+                    </Button>
+                    <Button
+                      variant={viewMode === "list" ? "secondary" : "ghost"}
+                      className="w-full justify-start gap-2 h-9"
+                      onClick={() => setViewMode("list")}
+                    >
+                      <List size={14} /> {t("vault.view.list")}
+                    </Button>
+                    <Button
+                      variant={viewMode === "tree" ? "secondary" : "ghost"}
+                      className="w-full justify-start gap-2 h-9"
+                      onClick={() => setViewMode("tree")}
+                    >
+                      <Network size={14} /> {t("vault.view.tree")}
+                    </Button>
+                  </DropdownContent>
+                </Dropdown>
+                <TagFilterDropdown
+                  allTags={allTags}
+                  selectedTags={selectedTags}
+                  onChange={setSelectedTags}
+                  onEditTag={handleEditTag}
+                  onDeleteTag={handleDeleteTag}
+                  className={cn(hostsHeaderTransitionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
+                />
+                <SortDropdown
+                  value={sortMode}
+                  onChange={setSortMode}
+                  className={cn(hostsHeaderTransitionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
+                />
+                <Button
+                  variant={isMultiSelectMode ? "secondary" : "ghost"}
+                  size="icon"
+                  className={cn(hostsHeaderTransitionClass, isHostsHeaderCompact ? "h-9 w-9" : "h-10 w-10")}
+                  onClick={() => {
+                    if (isMultiSelectMode) {
+                      clearHostSelection();
+                    } else {
+                      setIsMultiSelectMode(true);
+                    }
+                  }}
+                  title={t("vault.hosts.multiSelect")}
+                >
+                  <CheckSquare size={15} />
+                </Button>
+              </div>
+
+              <div className={cn("flex min-w-0 shrink-0 items-center justify-end", hostsHeaderTransitionClass, isHostsHeaderCompact ? "gap-1.5" : "gap-3")}>
+                <Dropdown>
+                  <div className="flex items-center rounded-md bg-primary text-primary-foreground">
+                    <Button
+                      size="sm"
+                      className={cn(
+                        "rounded-r-none bg-transparent hover:bg-white/10 shadow-none overflow-hidden whitespace-nowrap",
+                        hostsHeaderTransitionClass,
+                        isHostsHeaderCompact ? "h-9 px-2.5 w-[42px]" : "h-10 px-3 w-[114px]",
+                      )}
+                      onClick={handleNewHost}
+                      aria-label={t("vault.hosts.newHost")}
+                      title={t("vault.hosts.newHost")}
+                    >
+                      <Plus size={14} className="shrink-0" />
+                      <span
+                        className={cn(
+                          "overflow-hidden whitespace-nowrap",
+                          hostsHeaderTransitionClass,
+                          isHostsHeaderCompact ? "max-w-0 opacity-0 ml-0" : "max-w-24 opacity-100 ml-2",
+                        )}
+                      >
+                        {t("vault.hosts.newHost")}
+                      </span>
+                    </Button>
+                    <DropdownTrigger asChild>
+                      <Button
+                        size="sm"
+                        className={cn(
+                          "rounded-l-none bg-transparent hover:bg-white/10 border-l border-primary-foreground/20 shadow-none",
+                          hostsHeaderTransitionClass,
+                          isHostsHeaderCompact ? "h-9 px-1.5" : "h-10 px-2",
+                        )}
+                        aria-label={t("vault.hosts.newHost")}
+                        title={t("vault.hosts.newHost")}
+                      >
+                        <ChevronDown size={14} />
+                      </Button>
+                    </DropdownTrigger>
+                  </div>
+                  <DropdownContent className="w-44" align="end" alignToParent>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-2"
+                      onClick={() => {
+                        setTargetParentPath(selectedGroupPath);
+                        setNewFolderName("");
+                        setIsNewFolderOpen(true);
+                      }}
+                    >
+                      <FolderTree size={14} /> {t("vault.hosts.newGroup")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-2"
+                      onClick={() => {
+                        setIsImportOpen(true);
+                      }}
+                    >
+                      <Upload size={14} /> {t("vault.hosts.import")}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-2"
+                      onClick={handleExportHosts}
+                    >
+                      <Download size={14} /> {t("vault.hosts.export")}
+                    </Button>
+                  </DropdownContent>
+                </Dropdown>
+
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className={cn(
+                    "bg-foreground/5 text-foreground hover:bg-foreground/10 border-border/40 overflow-hidden whitespace-nowrap",
+                    hostsHeaderTransitionClass,
+                    isHostsHeaderCompact ? "h-9 w-9 px-0" : "h-10 w-[106px] px-3",
+                  )}
+                  onClick={onCreateLocalTerminal}
+                  aria-label={t("common.terminal")}
+                  title={t("common.terminal")}
+                >
+                  <TerminalSquare size={14} className="shrink-0" />
+                  <span
+                    className={cn(
+                      "overflow-hidden whitespace-nowrap",
+                      hostsHeaderTransitionClass,
+                      isHostsHeaderCompact ? "max-w-0 opacity-0 ml-0" : "max-w-24 opacity-100 ml-2",
+                    )}
                   >
-                    <FolderTree size={14} /> {t("vault.hosts.newGroup")}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-2"
-                    onClick={() => {
-                      setIsImportOpen(true);
-                    }}
+                    {t("common.terminal")}
+                  </span>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className={cn(
+                    "bg-foreground/5 text-foreground hover:bg-foreground/10 border-border/40 overflow-hidden whitespace-nowrap",
+                    hostsHeaderTransitionClass,
+                    isHostsHeaderCompact ? "h-9 w-9 px-0" : "h-10 w-[92px] px-3",
+                  )}
+                  onClick={() => setIsSerialModalOpen(true)}
+                  aria-label={t("serial.button")}
+                  title={t("serial.button")}
+                >
+                  <Usb size={14} className="shrink-0" />
+                  <span
+                    className={cn(
+                      "overflow-hidden whitespace-nowrap",
+                      hostsHeaderTransitionClass,
+                      isHostsHeaderCompact ? "max-w-0 opacity-0 ml-0" : "max-w-20 opacity-100 ml-2",
+                    )}
                   >
-                    <Upload size={14} /> {t("vault.hosts.import")}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-2"
-                    onClick={handleExportHosts}
-                  >
-                    <Download size={14} /> {t("vault.hosts.export")}
-                  </Button>
-                </DropdownContent>
-              </Dropdown>
-            </div>
-            {/* Terminal + Serial — collapse together with an animation when
-                the host details / new-host aside panel is open, freeing
-                horizontal space for the panel. */}
-            <div
-              className={cn(
-                "flex items-center gap-3 overflow-hidden transition-[max-width,opacity,margin] duration-200 ease-in-out",
-                isHostPanelOpen
-                  ? "max-w-0 opacity-0 -ml-3 pointer-events-none"
-                  : "max-w-[320px] opacity-100",
-              )}
-              aria-hidden={isHostPanelOpen}
-            >
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-10 px-3 app-no-drag bg-foreground/5 text-foreground hover:bg-foreground/10 border-border/40"
-                onClick={onCreateLocalTerminal}
-                tabIndex={isHostPanelOpen ? -1 : 0}
-              >
-                <TerminalSquare size={14} className="mr-2" /> {t("common.terminal")}
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-10 px-3 app-no-drag bg-foreground/5 text-foreground hover:bg-foreground/10 border-border/40"
-                onClick={() => setIsSerialModalOpen(true)}
-                tabIndex={isHostPanelOpen ? -1 : 0}
-              >
-                <Usb size={14} className="mr-2" /> {t("serial.button")}
-              </Button>
+                    {t("serial.button")}
+                  </span>
+                </Button>
+              </div>
             </div>
           </div>
         </header>
@@ -1970,7 +2084,8 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
         {/* Keep hosts mounted so switching sections does not reset scroll or remount the list. */}
         <div
           className={cn(
-            "flex-1 overflow-auto px-4 py-4 space-y-6",
+            "flex-1 min-w-0 overflow-auto px-4 py-4 space-y-6 transition-[padding] duration-[260ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]",
+            isHostsSidePanelPresent && "pr-3",
             !isHostsSectionActive && "hidden",
           )}
           data-section="vault-host-list"
@@ -2050,8 +2165,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         viewMode === "grid"
                           ? cn(
                             "grid gap-3",
-                            !hasHostsSidePanel && "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-                          )
+                                                      )
                           : "flex flex-col gap-0",
                       )}
                       style={viewMode === "grid" ? splitViewGridStyle : undefined}>
@@ -2154,8 +2268,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         viewMode === "grid"
                           ? cn(
                             "grid gap-3",
-                            !hasHostsSidePanel && "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-                          )
+                                                      )
                           : "flex flex-col gap-0",
                       )}
                       style={viewMode === "grid" ? splitViewGridStyle : undefined}>
@@ -2259,8 +2372,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         viewMode === "grid"
                           ? cn(
                             "grid gap-3",
-                            !hasHostsSidePanel && "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-                          )
+                                                      )
                           : "flex flex-col gap-0",
                       )}
                       style={viewMode === "grid" ? splitViewGridStyle : undefined}
@@ -2460,9 +2572,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                       onCopyCredentials={handleCopyCredentials}
 
                       onNewHost={(groupPath) => {
-                        setEditingHost(null);
-                        setNewHostGroupPath(groupPath || null);
-                        setIsHostPanelOpen(true);
+                        openHostPanel(null, groupPath || null);
                       }}
                       onNewGroup={(parentPath) => {
                         setTargetParentPath(parentPath || null);
@@ -2504,8 +2614,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                                 viewMode === "grid"
                                   ? cn(
                                     "grid gap-3",
-                                    !hasHostsSidePanel && "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-                                  )
+                                                                      )
                                   : "flex flex-col gap-0",
                               )}
                               style={viewMode === "grid" ? splitViewGridStyle : undefined}
@@ -2649,8 +2758,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         viewMode === "grid"
                           ? cn(
                             "grid gap-3",
-                            !hasHostsSidePanel && "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
-                          )
+                                                      )
                           : "flex flex-col gap-0",
                       )}
                       style={viewMode === "grid" ? splitViewGridStyle : undefined}
@@ -2906,6 +3014,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       {/* Group Details Panel */}
       {currentSection === "hosts" && isGroupPanelOpen && editingGroupPath && (
         <GroupDetailsPanel
+          open={isGroupPanelOpen}
           key={editingGroupPath}
           groupPath={editingGroupPath}
           config={groupConfigs.find(c => c.path === editingGroupPath)}
@@ -2926,8 +3035,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       )}
 
       {/* Host Details Panel - positioned at VaultView root level for correct top alignment */}
-      {currentSection === "hosts" && isHostPanelOpen && editingHost?.protocol !== 'serial' && (
+      {currentSection === "hosts" && isHostPanelPresent && editingHost?.protocol !== 'serial' && (
         <HostDetailsPanel
+          open={isHostPanelOpen}
           initialData={editingHost}
           availableKeys={keys}
           identities={identities}
@@ -2948,15 +3058,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                 ? hosts.map((h) => (h.id === host.id ? host : h))
                 : [...hosts, host],
             );
-            setIsHostPanelOpen(false);
-            setEditingHost(null);
-            setNewHostGroupPath(null);
+            closeHostPanel();
           }}
-          onCancel={() => {
-            setIsHostPanelOpen(false);
-            setEditingHost(null);
-            setNewHostGroupPath(null);
-          }}
+          onCancel={closeHostPanel}
           onCreateGroup={(groupPath) => {
             onUpdateCustomGroups(
               Array.from(new Set([...customGroups, groupPath])),
@@ -2967,8 +3071,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       )}
 
       {/* Serial Host Details Panel - for editing serial port hosts */}
-      {currentSection === "hosts" && isHostPanelOpen && editingHost?.protocol === 'serial' && (
+      {currentSection === "hosts" && isHostPanelPresent && editingHost?.protocol === 'serial' && (
         <SerialHostDetailsPanel
+          open={isHostPanelOpen}
           initialData={editingHost}
           allTags={allTags}
           groups={allGroupPaths}
@@ -2976,13 +3081,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
             onUpdateHosts(
               hosts.map((h) => (h.id === host.id ? host : h)),
             );
-            setIsHostPanelOpen(false);
-            setEditingHost(null);
+            closeHostPanel();
           }}
-          onCancel={() => {
-            setIsHostPanelOpen(false);
-            setEditingHost(null);
-          }}
+          onCancel={closeHostPanel}
           layout="inline"
         />
       )}

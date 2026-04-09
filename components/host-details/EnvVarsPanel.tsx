@@ -12,6 +12,7 @@ import { Card } from '../ui/card';
 import { Input } from '../ui/input';
 
 export interface EnvVarsPanelProps {
+    open?: boolean;
     hostLabel: string;
     hostHostname: string;
     environmentVariables: EnvVar[];
@@ -29,6 +30,7 @@ export interface EnvVarsPanelProps {
 }
 
 export const EnvVarsPanel: React.FC<EnvVarsPanelProps> = ({
+    open = true,
     hostLabel,
     hostHostname,
     environmentVariables,
@@ -47,7 +49,7 @@ export const EnvVarsPanel: React.FC<EnvVarsPanelProps> = ({
     const { t } = useI18n();
     return (
         <AsidePanel
-            open={true}
+            open={open}
             onClose={onCancel}
             title={t('hostDetails.envVars.title')}
             showBackButton={true}

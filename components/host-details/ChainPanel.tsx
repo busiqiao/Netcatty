@@ -14,6 +14,7 @@ import { Input } from '../ui/input';
 import { ScrollArea } from '../ui/scroll-area';
 
 export interface ChainPanelProps {
+    open?: boolean;
     formLabel: string;
     formHostname: string;
     form: Host;
@@ -28,6 +29,7 @@ export interface ChainPanelProps {
 }
 
 export const ChainPanel: React.FC<ChainPanelProps> = ({
+    open = true,
     formLabel,
     formHostname,
     form,
@@ -51,7 +53,7 @@ export const ChainPanel: React.FC<ChainPanelProps> = ({
     }, [availableHostsForChain, searchQuery]);
     return (
         <AsidePanel
-            open={true}
+            open={open}
             onClose={onCancel}
             title={t('hostDetails.chain.title')}
             showBackButton={true}

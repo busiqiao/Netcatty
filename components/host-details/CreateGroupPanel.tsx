@@ -34,6 +34,7 @@ const ToggleRow: React.FC<ToggleRowProps> = ({ label, enabled, onToggle }) => (
 );
 
 export interface CreateGroupPanelProps {
+    open?: boolean;
     newGroupName: string;
     setNewGroupName: (name: string) => void;
     newGroupParent: string;
@@ -46,6 +47,7 @@ export interface CreateGroupPanelProps {
 }
 
 export const CreateGroupPanel: React.FC<CreateGroupPanelProps> = ({
+    open = true,
     newGroupName,
     setNewGroupName,
     newGroupParent,
@@ -59,7 +61,7 @@ export const CreateGroupPanel: React.FC<CreateGroupPanelProps> = ({
     const { t } = useI18n();
     return (
         <AsidePanel
-            open={true}
+            open={open}
             onClose={onCancel}
             title={t('hostDetails.group.title')}
             showBackButton={true}

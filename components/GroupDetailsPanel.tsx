@@ -55,6 +55,7 @@ import { useAvailableFonts } from "../application/state/fontStore";
 type SubPanel = "none" | "proxy" | "chain" | "env-vars" | "theme-select";
 
 interface GroupDetailsPanelProps {
+  open?: boolean;
   groupPath: string;
   config: GroupConfig | undefined;
   availableKeys: SSHKey[];
@@ -70,6 +71,7 @@ interface GroupDetailsPanelProps {
 }
 
 const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
+  open = true,
   groupPath,
   config,
   availableKeys,
@@ -359,6 +361,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
   if (activeSubPanel === "proxy") {
     return (
       <ProxyPanel
+        open={open}
         proxyConfig={form.proxyConfig}
         onUpdateProxy={updateProxyConfig}
         onClearProxy={clearProxyConfig}
@@ -372,6 +375,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
   if (activeSubPanel === "chain") {
     return (
       <ChainPanel
+        open={open}
         formLabel={groupName}
         formHostname={groupPath}
         form={{ id: "", label: groupName, hostname: groupPath, port: 22, username: "", tags: [], os: "linux" }}
@@ -390,6 +394,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
   if (activeSubPanel === "env-vars") {
     return (
       <EnvVarsPanel
+        open={open}
         hostLabel={groupName}
         hostHostname={groupPath}
         environmentVariables={form.environmentVariables || []}
@@ -418,7 +423,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
   if (activeSubPanel === "theme-select") {
     return (
       <ThemeSelectPanel
-        open={true}
+        open={open}
         selectedThemeId={effectiveThemeId}
         onSelect={(themeId) => {
           if (themeId === effectiveThemeId && !hasActiveThemeOverride) {
@@ -444,7 +449,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
   // --- Main panel ---
   return (
     <AsidePanel
-      open={true}
+      open={open}
       onClose={onCancel}
       width="w-[380px]"
       dataSection="group-details-panel"

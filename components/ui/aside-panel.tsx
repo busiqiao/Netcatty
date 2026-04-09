@@ -1,5 +1,5 @@
 import { ArrowLeft, MoreVertical, X } from 'lucide-react';
-import React, { createContext, ReactNode, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { cn } from '../../lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from './popover';
 import { ScrollArea } from './scroll-area';
@@ -186,6 +186,50 @@ interface AsidePanelStackProps {
 }
 
 export type AsidePanelLayout = 'overlay' | 'inline';
+export const INLINE_ASIDE_PANEL_ANIMATION_MS = 260;
+
+const useInlinePanelPresence = (open: boolean, layout: AsidePanelLayout) => {
+    const isInline = layout === 'inline';
+    const [isMounted, setIsMounted] = useState(open);
+    const [isVisible, setIsVisible] = useState(false);
+
+    useEffect(() => {
+        if (!isInline) {
+            setIsMounted(open);
+            setIsVisible(open);
+            return;
+        }
+
+        let frameId: number | null = null;
+        let timeoutId: number | null = null;
+
+        if (open) {
+            setIsMounted(true);
+            frameId = window.requestAnimationFrame(() => {
+                setIsVisible(true);
+            });
+        } else if (isMounted) {
+            setIsVisible(false);
+            timeoutId = window.setTimeout(() => {
+                setIsMounted(false);
+            }, INLINE_ASIDE_PANEL_ANIMATION_MS);
+        }
+
+        return () => {
+            if (frameId !== null) {
+                window.cancelAnimationFrame(frameId);
+            }
+            if (timeoutId !== null) {
+                window.clearTimeout(timeoutId);
+            }
+        };
+    }, [isInline, isMounted, open]);
+
+    return {
+        isMounted: isInline ? isMounted : open,
+        dataState: isInline ? (isVisible ? 'open' : 'closed') : undefined,
+    };
+};
 
 const resolveInlineWidth = (width: string) => {
     const arbitraryWidthMatch = width.match(/w-\[(.+)\]/);
@@ -213,6 +257,7 @@ export const AsidePanelStack: React.FC<AsidePanelStackProps> = ({
     dataSection,
 }) => {
     const [stack, setStack] = useState<AsideContentItem[]>([initialItem]);
+    const { isMounted, dataState } = useInlinePanelPresence(open, layout);
 
     const push = useCallback((item: AsideContentItem) => {
         setStack(prev => [...prev, item]);
@@ -252,19 +297,21 @@ export const AsidePanelStack: React.FC<AsidePanelStackProps> = ({
         }
     }, [open, initialItem]);
 
-    if (!open) return null;
+    if (!isMounted) return null;
 
     return (
         <AsidePanelContext.Provider value={{ push, pop, replace, clear, canGoBack, currentItem }}>
             <div className={cn(
                 layout === 'inline'
-                    ? "relative split-panel-enter shrink-0 h-full min-h-0 max-w-full border-l border-border/60 bg-background z-30 flex flex-col app-no-drag overflow-hidden shadow-[-16px_0_32px_hsl(var(--foreground)/0.08)]"
+                    ? "relative split-panel shrink-0 h-full min-h-0 max-w-full border-l border-border/60 bg-background z-30 flex flex-col app-no-drag overflow-hidden shadow-[-10px_0_20px_-12px_hsl(var(--foreground)/0.22)]"
                     : "absolute right-0 top-0 bottom-0 max-w-full border-l border-border/60 bg-background z-30 flex flex-col app-no-drag overflow-hidden",
                 layout === 'overlay' && width,
                 className
             )}
             style={inlineStyle}
-            data-section={dataSection}>
+            data-section={dataSection}
+            data-state={dataState}
+            aria-hidden={layout === 'inline' ? !open : undefined}>
                 <AsidePanelHeader
                     title={currentItem.title}
                     subtitle={currentItem.subtitle}
@@ -294,7 +341,9 @@ export const AsidePanel: React.FC<AsidePanelProps> = ({
     layout = 'overlay',
     dataSection,
 }) => {
-    if (!open) return null;
+    const { isMounted, dataState } = useInlinePanelPresence(open, layout);
+
+    if (!isMounted) return null;
 
     const inlineWidth = resolveInlineWidth(width);
     const inlineStyle = layout === 'inline'
@@ -307,13 +356,15 @@ export const AsidePanel: React.FC<AsidePanelProps> = ({
     return (
         <div className={cn(
             layout === 'inline'
-                ? "relative split-panel-enter shrink-0 h-full min-h-0 max-w-full border-l border-border/60 bg-background z-30 flex flex-col app-no-drag overflow-hidden shadow-[-16px_0_32px_hsl(var(--foreground)/0.08)]"
+                ? "relative split-panel shrink-0 h-full min-h-0 max-w-full border-l border-border/60 bg-background z-30 flex flex-col app-no-drag overflow-hidden shadow-[-10px_0_20px_-12px_hsl(var(--foreground)/0.22)]"
                 : "absolute right-0 top-0 bottom-0 max-w-full border-l border-border/60 bg-background z-30 flex flex-col app-no-drag overflow-hidden",
             layout === 'overlay' && width,
             className
         )}
         style={inlineStyle}
-        data-section={dataSection}>
+        data-section={dataSection}
+        data-state={dataState}
+        aria-hidden={layout === 'inline' ? !open : undefined}>
             {title && (
                 <AsidePanelHeader
                     title={title}
