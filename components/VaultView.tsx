@@ -1581,12 +1581,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const isGroupPanelPresent = useDeferredPanelPresence(
     isHostsSectionActive && isGroupPanelOpen && !!editingGroupPath,
   );
-  const isHostsSidePanelPresent =
-    isHostsSectionActive &&
-    (isGroupPanelPresent || isHostPanelPresent);
   const isHostsHeaderCompact = isHostsSidePanelActive;
   const hostsHeaderTransitionClass =
-    "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[260ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
+    "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[320ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
   const hasSearchValue = search.trim().length > 0;
   const splitViewGridStyle = {
     gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))",
@@ -2134,8 +2131,8 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
         {/* Keep hosts mounted so switching sections does not reset scroll or remount the list. */}
         <div
           className={cn(
-            "flex-1 min-w-0 overflow-auto px-4 py-4 space-y-6 transition-[padding] duration-[260ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]",
-            isHostsSidePanelPresent && "pr-3",
+            "flex-1 min-w-0 overflow-auto px-4 py-4 space-y-6 transition-[padding] duration-[320ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]",
+            isHostsSidePanelActive && "pr-3",
             !isHostsSectionActive && "hidden",
           )}
           data-section="vault-host-list"

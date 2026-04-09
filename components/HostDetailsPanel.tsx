@@ -136,6 +136,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
 }) => {
   const { t } = useI18n();
   const { checkSshAgent } = useApplicationBackend();
+  const isCompactInlineLayout = layout === "inline";
   const [form, setForm] = useState<Host>(
     () =>
       initialData ||
@@ -660,7 +661,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
     <AsidePanel
       open={open}
       onClose={onCancel}
-      width="w-[420px]"
+      width="w-[340px]"
       layout={layout}
       dataSection="host-details-panel"
       title={
@@ -784,20 +785,25 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0 h-10 flex items-center gap-2 bg-secondary/70 border border-border/70 rounded-md px-3">
+            <div
+              className={cn(
+                "flex-1 min-w-0 bg-secondary/70 border border-border/70 rounded-md",
+                isCompactInlineLayout
+                  ? "grid grid-cols-[minmax(0,1fr)_72px_auto] items-center gap-2 p-2"
+                  : "h-10 flex items-center gap-2 px-3",
+              )}
+            >
               <span className="text-xs text-muted-foreground">SSH on</span>
-              <div className="ml-auto w-1/2 min-w-0 flex items-center gap-2 justify-end">
-                <Input
-                  type="number"
-                  value={form.port ?? ""}
-                  onChange={(e) => update("port", e.target.value ? Number(e.target.value) : undefined)}
-                  placeholder={groupDefaults?.port ? String(groupDefaults.port) : "22"}
-                  className="h-8 flex-1 min-w-0 text-center"
-                />
-                <span className="text-xs text-muted-foreground">
-                  {t("hostDetails.port")}
-                </span>
-              </div>
+              <Input
+                type="number"
+                value={form.port ?? ""}
+                onChange={(e) => update("port", e.target.value ? Number(e.target.value) : undefined)}
+                placeholder={groupDefaults?.port ? String(groupDefaults.port) : "22"}
+                className="h-8 min-w-0 text-center"
+              />
+              <span className="text-xs text-muted-foreground">
+                {t("hostDetails.port")}
+              </span>
             </div>
           </div>
           <div className="grid gap-2">
@@ -1302,7 +1308,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
             </p>
           )}
           <div className="flex items-center justify-between gap-4">
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 min-w-0">
               <div className="text-sm font-medium">
                 {t("hostDetails.sftp.encoding")}
               </div>
@@ -1314,7 +1320,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
               value={form.sftpEncoding || "auto"}
               onValueChange={(val) => update("sftpEncoding", val as Host["sftpEncoding"])}
             >
-              <SelectTrigger className="h-8 w-28">
+              <SelectTrigger className="h-8 w-fit min-w-[84px] shrink-0 px-2.5">
                 <SelectValue placeholder={t("sftp.encoding.label")} />
               </SelectTrigger>
               <SelectContent>

@@ -451,7 +451,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
     <AsidePanel
       open={open}
       onClose={onCancel}
-      width="w-[380px]"
+      width="w-[340px]"
       dataSection="group-details-panel"
       title={t("vault.groups.details")}
       layout={layout}

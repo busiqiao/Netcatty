@@ -51,6 +51,7 @@ export const EnvVarsPanel: React.FC<EnvVarsPanelProps> = ({
         <AsidePanel
             open={open}
             onClose={onCancel}
+            width="w-[340px]"
             title={t('hostDetails.envVars.title')}
             showBackButton={true}
             onBack={onBack}

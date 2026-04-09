@@ -37,6 +37,7 @@ export const ProxyPanel: React.FC<ProxyPanelProps> = ({
         <AsidePanel
             open={open}
             onClose={onCancel}
+            width="w-[340px]"
             title={t('hostDetails.proxyPanel.title')}
             showBackButton={true}
             onBack={onBack}

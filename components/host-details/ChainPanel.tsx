@@ -55,6 +55,7 @@ export const ChainPanel: React.FC<ChainPanelProps> = ({
         <AsidePanel
             open={open}
             onClose={onCancel}
+            width="w-[340px]"
             title={t('hostDetails.chain.title')}
             showBackButton={true}
             onBack={onBack}

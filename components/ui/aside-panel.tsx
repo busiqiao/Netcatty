@@ -186,7 +186,7 @@ interface AsidePanelStackProps {
 }
 
 export type AsidePanelLayout = 'overlay' | 'inline';
-export const INLINE_ASIDE_PANEL_ANIMATION_MS = 260;
+export const INLINE_ASIDE_PANEL_ANIMATION_MS = 320;
 
 const useInlinePanelPresence = (open: boolean, layout: AsidePanelLayout) => {
     const isInline = layout === 'inline';
@@ -283,10 +283,15 @@ export const AsidePanelStack: React.FC<AsidePanelStackProps> = ({
     const currentItem = stack[stack.length - 1];
     const canGoBack = stack.length > 1;
     const inlineWidth = useMemo(() => resolveInlineWidth(width), [width]);
-    const inlineStyle = layout === 'inline'
+    const rootInlineStyle = layout === 'inline'
+        ? ({
+            ['--aside-inline-width' as string]: inlineWidth,
+        } as React.CSSProperties)
+        : undefined;
+    const contentInlineStyle = layout === 'inline'
         ? ({
             width: inlineWidth,
-            ['--aside-inline-width' as string]: inlineWidth,
+            minWidth: inlineWidth,
         } as React.CSSProperties)
         : undefined;
 
@@ -308,19 +313,27 @@ export const AsidePanelStack: React.FC<AsidePanelStackProps> = ({
                 layout === 'overlay' && width,
                 className
             )}
-            style={inlineStyle}
+            style={rootInlineStyle}
             data-section={dataSection}
             data-state={dataState}
             aria-hidden={layout === 'inline' ? !open : undefined}>
-                <AsidePanelHeader
-                    title={currentItem.title}
-                    subtitle={currentItem.subtitle}
-                    actions={currentItem.actions}
-                    onBack={canGoBack ? pop : undefined}
-                    onClose={onClose}
-                    showBackButton={canGoBack}
-                />
-                {currentItem.content}
+                <div
+                    className={cn(
+                        "h-full min-h-0 flex flex-col",
+                        layout === 'inline' && "overflow-hidden"
+                    )}
+                    style={contentInlineStyle}
+                >
+                    <AsidePanelHeader
+                        title={currentItem.title}
+                        subtitle={currentItem.subtitle}
+                        actions={currentItem.actions}
+                        onBack={canGoBack ? pop : undefined}
+                        onClose={onClose}
+                        showBackButton={canGoBack}
+                    />
+                    {currentItem.content}
+                </div>
             </div>
         </AsidePanelContext.Provider>
     );
@@ -346,10 +359,15 @@ export const AsidePanel: React.FC<AsidePanelProps> = ({
     if (!isMounted) return null;
 
     const inlineWidth = resolveInlineWidth(width);
-    const inlineStyle = layout === 'inline'
+    const rootInlineStyle = layout === 'inline'
+        ? ({
+            ['--aside-inline-width' as string]: inlineWidth,
+        } as React.CSSProperties)
+        : undefined;
+    const contentInlineStyle = layout === 'inline'
         ? ({
             width: inlineWidth,
-            ['--aside-inline-width' as string]: inlineWidth,
+            minWidth: inlineWidth,
         } as React.CSSProperties)
         : undefined;
 
@@ -361,21 +379,29 @@ export const AsidePanel: React.FC<AsidePanelProps> = ({
             layout === 'overlay' && width,
             className
         )}
-        style={inlineStyle}
+        style={rootInlineStyle}
         data-section={dataSection}
         data-state={dataState}
         aria-hidden={layout === 'inline' ? !open : undefined}>
-            {title && (
-                <AsidePanelHeader
-                    title={title}
-                    subtitle={subtitle}
-                    actions={actions}
-                    onClose={onClose}
-                    showBackButton={showBackButton}
-                    onBack={onBack}
-                />
-            )}
-            {children}
+            <div
+                className={cn(
+                    "h-full min-h-0 flex flex-col",
+                    layout === 'inline' && "overflow-hidden"
+                )}
+                style={contentInlineStyle}
+            >
+                {title && (
+                    <AsidePanelHeader
+                        title={title}
+                        subtitle={subtitle}
+                        actions={actions}
+                        onClose={onClose}
+                        showBackButton={showBackButton}
+                        onBack={onBack}
+                    />
+                )}
+                {children}
+            </div>
         </div>
     );
 };

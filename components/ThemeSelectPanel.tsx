@@ -30,6 +30,7 @@ const ThemeSelectPanel: React.FC<ThemeSelectPanelProps> = ({
         <AsidePanel
             open={open}
             onClose={onClose}
+            width="w-[340px]"
             title="Select Color Theme"
             showBackButton={showBackButton}
             onBack={onBack}

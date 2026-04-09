@@ -166,6 +166,7 @@ export const SerialHostDetailsPanel: React.FC<SerialHostDetailsPanelProps> = ({
     <AsidePanel
       open={open}
       onClose={onCancel}
+      width="w-[340px]"
       title={t('serial.edit.title')}
       subtitle={initialData.label}
       className="z-40"

@@ -63,6 +63,7 @@ export const CreateGroupPanel: React.FC<CreateGroupPanelProps> = ({
         <AsidePanel
             open={open}
             onClose={onCancel}
+            width="w-[340px]"
             title={t('hostDetails.group.title')}
             showBackButton={true}
             onBack={onBack}
