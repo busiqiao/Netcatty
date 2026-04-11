@@ -56,6 +56,7 @@ import {
   AsidePanel,
   AsidePanelContent,
   AsidePanelFooter,
+  type InlinePanelAnimationStateChange,
   type AsidePanelLayout,
 } from "./ui/aside-panel";
 import { Badge } from "./ui/badge";
@@ -113,6 +114,7 @@ interface HostDetailsPanelProps {
   groupConfigs?: GroupConfig[];
   layout?: AsidePanelLayout;
   disableInitialInlineAnimation?: boolean;
+  onInlineAnimationStateChange?: InlinePanelAnimationStateChange;
 }
 
 const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
@@ -135,6 +137,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
   groupConfigs = [],
   layout = "overlay",
   disableInitialInlineAnimation = false,
+  onInlineAnimationStateChange,
 }) => {
   const { t } = useI18n();
   const { checkSshAgent } = useApplicationBackend();
@@ -666,6 +669,7 @@ const HostDetailsPanel: React.FC<HostDetailsPanelProps> = ({
       width="w-[340px]"
       layout={layout}
       disableInitialInlineAnimation={disableInitialInlineAnimation}
+      onInlineAnimationStateChange={onInlineAnimationStateChange}
       dataSection="host-details-panel"
       title={
         initialData ? t("hostDetails.title.details") : t("hostDetails.title.new")

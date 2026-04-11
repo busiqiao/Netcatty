@@ -40,6 +40,7 @@ import {
 import {
   AsidePanel,
   AsidePanelContent,
+  type InlinePanelAnimationStateChange,
   type AsidePanelLayout,
 } from "./ui/aside-panel";
 import { Badge } from "./ui/badge";
@@ -69,6 +70,7 @@ interface GroupDetailsPanelProps {
   onCancel: () => void;
   layout?: AsidePanelLayout;
   disableInitialInlineAnimation?: boolean;
+  onInlineAnimationStateChange?: InlinePanelAnimationStateChange;
 }
 
 const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
@@ -86,6 +88,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
   onCancel,
   layout = "overlay",
   disableInitialInlineAnimation = false,
+  onInlineAnimationStateChange,
 }) => {
   const { t } = useI18n();
   const availableFonts = useAvailableFonts();
@@ -456,6 +459,7 @@ const GroupDetailsPanel: React.FC<GroupDetailsPanelProps> = ({
       width="w-[340px]"
       dataSection="group-details-panel"
       disableInitialInlineAnimation={disableInitialInlineAnimation}
+      onInlineAnimationStateChange={onInlineAnimationStateChange}
       title={t("vault.groups.details")}
       layout={layout}
       actions={

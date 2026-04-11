@@ -97,7 +97,7 @@ import { TagFilterDropdown } from "./ui/tag-filter-dropdown";
 import { toast } from "./ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "./ui/tooltip";
 import { Badge } from "./ui/badge";
-import { INLINE_ASIDE_PANEL_ANIMATION_MS } from "./ui/aside-panel";
+import { INLINE_ASIDE_PANEL_ANIMATION_MS, type InlinePanelAnimationState } from "./ui/aside-panel";
 import { HotkeyScheme, KeyBinding } from "../domain/models";
 
 const LazyProtocolSelectDialog = lazy(() => import("./ProtocolSelectDialog"));
@@ -307,11 +307,21 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const [mainHostsLockedWidth, setMainHostsLockedWidth] = useState<number | null>(null);
   const [isMainHostsFrozen, setIsMainHostsFrozen] = useState(false);
   const mainHostsFreezeTimeoutRef = useRef<number | null>(null);
+  const mainHostsFreezeReleaseFrameRef = useRef<number | null>(null);
+  const mainHostsFreezeSecondReleaseFrameRef = useRef<number | null>(null);
 
   const clearMainHostsFreezeTimers = useCallback(() => {
     if (mainHostsFreezeTimeoutRef.current !== null) {
       window.clearTimeout(mainHostsFreezeTimeoutRef.current);
       mainHostsFreezeTimeoutRef.current = null;
+    }
+    if (mainHostsFreezeReleaseFrameRef.current !== null) {
+      window.cancelAnimationFrame(mainHostsFreezeReleaseFrameRef.current);
+      mainHostsFreezeReleaseFrameRef.current = null;
+    }
+    if (mainHostsFreezeSecondReleaseFrameRef.current !== null) {
+      window.cancelAnimationFrame(mainHostsFreezeSecondReleaseFrameRef.current);
+      mainHostsFreezeSecondReleaseFrameRef.current = null;
     }
   }, []);
 
@@ -322,7 +332,49 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     return mainHostsGridRef.current;
   }, [sortMode]);
 
-  const captureMainHostsFreeze = useCallback((_nextSidePanelOpen: boolean) => {
+  const finishMainHostsFreeze = useCallback(() => {
+    if (currentSection !== "hosts" || viewMode !== "grid") {
+      setMainHostsLockedWidth(null);
+      setIsMainHostsFrozen(false);
+      clearMainHostsFreezeTimers();
+      return;
+    }
+
+    clearMainHostsFreezeTimers();
+    mainHostsFreezeReleaseFrameRef.current = window.requestAnimationFrame(() => {
+      mainHostsFreezeSecondReleaseFrameRef.current = window.requestAnimationFrame(() => {
+        const gridEl = getActiveHostsCardsContainer();
+        if (!gridEl) {
+          setMainHostsLockedWidth(null);
+          setIsMainHostsFrozen(false);
+          mainHostsFreezeReleaseFrameRef.current = null;
+          mainHostsFreezeSecondReleaseFrameRef.current = null;
+          return;
+        }
+
+        const rects = new Map<string, CardRectSnapshot>();
+        gridEl.querySelectorAll<HTMLElement>("[data-host-card-id]").forEach((cardEl) => {
+          const cardId = cardEl.dataset.hostCardId;
+          if (!cardId) return;
+          const rect = cardEl.getBoundingClientRect();
+          rects.set(cardId, {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          });
+        });
+
+        pendingMainHostsCardRectsRef.current = rects;
+        setMainHostsLockedWidth(null);
+        setIsMainHostsFrozen(false);
+        mainHostsFreezeReleaseFrameRef.current = null;
+        mainHostsFreezeSecondReleaseFrameRef.current = null;
+      });
+    });
+  }, [clearMainHostsFreezeTimers, currentSection, getActiveHostsCardsContainer, viewMode]);
+
+  const captureMainHostsFreeze = useCallback(() => {
     if (currentSection !== "hosts" || viewMode !== "grid") {
       setMainHostsLockedWidth(null);
       setIsMainHostsFrozen(false);
@@ -336,30 +388,23 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     const currentWidth = gridEl.getBoundingClientRect().width;
 
     clearMainHostsFreezeTimers();
+    pendingMainHostsCardRectsRef.current = null;
     setMainHostsLockedWidth(currentWidth);
     setIsMainHostsFrozen(true);
 
     mainHostsFreezeTimeoutRef.current = window.setTimeout(() => {
-      const rects = new Map<string, CardRectSnapshot>();
-      gridEl.querySelectorAll<HTMLElement>("[data-host-card-id]").forEach((cardEl) => {
-        const cardId = cardEl.dataset.hostCardId;
-        if (!cardId) return;
-        const rect = cardEl.getBoundingClientRect();
-        rects.set(cardId, {
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-          height: rect.height,
-        });
-      });
-      pendingMainHostsCardRectsRef.current = rects;
-      setMainHostsLockedWidth(null);
-      setIsMainHostsFrozen(false);
-      mainHostsFreezeTimeoutRef.current = null;
-    }, INLINE_ASIDE_PANEL_ANIMATION_MS);
-  }, [clearMainHostsFreezeTimers, currentSection, getActiveHostsCardsContainer, viewMode]);
+      finishMainHostsFreeze();
+    }, INLINE_ASIDE_PANEL_ANIMATION_MS + 80);
+  }, [clearMainHostsFreezeTimers, currentSection, finishMainHostsFreeze, getActiveHostsCardsContainer, viewMode]);
 
   useEffect(() => () => clearMainHostsFreezeTimers(), [clearMainHostsFreezeTimers]);
+
+  const handleInlinePanelAnimationStateChange = useCallback((state: InlinePanelAnimationState) => {
+    if (state !== "open" && state !== "closed") {
+      return;
+    }
+    finishMainHostsFreeze();
+  }, [finishMainHostsFreeze]);
 
   // Host panel state (local to hosts section)
   const [isHostPanelOpen, setIsHostPanelOpen] = useState(false);
@@ -380,7 +425,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, []);
 
   const openHostPanel = useCallback((host: Host | null, groupPath: string | null = null) => {
-    captureMainHostsFreeze(true);
+    captureMainHostsFreeze();
     clearPendingHostPanelReset();
     setEditingHost(host);
     setNewHostGroupPath(groupPath);
@@ -388,7 +433,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, [captureMainHostsFreeze, clearPendingHostPanelReset]);
 
   const closeHostPanel = useCallback(() => {
-    captureMainHostsFreeze(false);
+    captureMainHostsFreeze();
     setIsHostPanelOpen(false);
     clearPendingHostPanelReset();
     hostPanelResetTimeoutRef.current = window.setTimeout(() => {
@@ -443,7 +488,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, []);
 
   const openGroupPanel = useCallback((groupPath: string) => {
-    captureMainHostsFreeze(true);
+    captureMainHostsFreeze();
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
     setEditingGroupPath(groupPath);
@@ -451,7 +496,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, [captureMainHostsFreeze, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
 
   const closeGroupPanel = useCallback(() => {
-    captureMainHostsFreeze(false);
+    captureMainHostsFreeze();
     setIsGroupPanelOpen(false);
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
@@ -462,7 +507,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, [captureMainHostsFreeze, clearGroupPanelDraft, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
 
   const switchHostPanelToGroup = useCallback((groupPath: string) => {
-    captureMainHostsFreeze(true);
+    captureMainHostsFreeze();
     clearPendingHostPanelReset();
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
@@ -480,7 +525,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   ]);
 
   const switchGroupPanelToHost = useCallback((host: Host | null, groupPath: string | null = null) => {
-    captureMainHostsFreeze(true);
+    captureMainHostsFreeze();
     clearPendingHostPanelReset();
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
@@ -3314,6 +3359,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           onCancel={closeGroupPanel}
           layout="inline"
           disableInitialInlineAnimation={disableGroupPanelInitialInlineAnimation}
+          onInlineAnimationStateChange={handleInlinePanelAnimationStateChange}
         />
       )}
 
@@ -3351,6 +3397,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           }}
           layout="inline"
           disableInitialInlineAnimation={disableHostPanelInitialInlineAnimation}
+          onInlineAnimationStateChange={handleInlinePanelAnimationStateChange}
         />
       )}
 
@@ -3370,6 +3417,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           onCancel={closeHostPanel}
           layout="inline"
           disableInitialInlineAnimation={disableHostPanelInitialInlineAnimation}
+          onInlineAnimationStateChange={handleInlinePanelAnimationStateChange}
         />
       )}
 
