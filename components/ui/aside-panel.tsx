@@ -190,11 +190,13 @@ interface AsidePanelStackProps {
 }
 
 export type AsidePanelLayout = 'overlay' | 'inline';
-export const INLINE_ASIDE_PANEL_ANIMATION_MS = 1200;
+export const INLINE_ASIDE_PANEL_ANIMATION_MS = 1100;
+export const DEFAULT_INLINE_ASIDE_PANEL_WIDTH_PX = 380;
 export type InlinePanelAnimationState = 'opening' | 'open' | 'closing' | 'closed';
 export type InlinePanelAnimationStateChange = (state: InlinePanelAnimationState) => void;
 
 const INLINE_PANEL_TRANSITION_FALLBACK_MS = INLINE_ASIDE_PANEL_ANIMATION_MS + 80;
+const INLINE_PANEL_CLOSE_UNMOUNT_DELAY_MS = 180;
 
 const useInlinePanelPresence = (
     open: boolean,
@@ -210,14 +212,34 @@ const useInlinePanelPresence = (
         }
         return open ? (disableInitialInlineAnimation ? 'open' : 'opening') : 'closed';
     });
+    const isMountedRef = useRef(isMounted);
+    const inlinePhaseRef = useRef(inlinePhase);
+    const openRef = useRef(false);
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const visualRef = useRef<HTMLDivElement | null>(null);
     const visualTransitionFallbackTimeoutRef = useRef<number | null>(null);
+    const closeUnmountTimeoutRef = useRef<number | null>(null);
     const lastReportedStateRef = useRef<InlinePanelAnimationState | null>(null);
 
     const clearVisualTransitionFallback = useCallback(() => {
         if (visualTransitionFallbackTimeoutRef.current !== null) {
             window.clearTimeout(visualTransitionFallbackTimeoutRef.current);
             visualTransitionFallbackTimeoutRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => {
+        isMountedRef.current = isMounted;
+    }, [isMounted]);
+
+    useEffect(() => {
+        inlinePhaseRef.current = inlinePhase;
+    }, [inlinePhase]);
+
+    const clearCloseUnmountDelay = useCallback(() => {
+        if (closeUnmountTimeoutRef.current !== null) {
+            window.clearTimeout(closeUnmountTimeoutRef.current);
+            closeUnmountTimeoutRef.current = null;
         }
     }, []);
 
@@ -232,6 +254,7 @@ const useInlinePanelPresence = (
     const finishInlineTransition = useCallback((nextState: 'open' | 'closed') => {
         clearVisualTransitionFallback();
         if (nextState === 'open') {
+            clearCloseUnmountDelay();
             setInlinePhase('open');
             emitState('open');
             return;
@@ -239,11 +262,19 @@ const useInlinePanelPresence = (
 
         setInlinePhase('closed');
         emitState('closed');
-        setIsMounted(false);
-    }, [clearVisualTransitionFallback, emitState]);
+        clearCloseUnmountDelay();
+        closeUnmountTimeoutRef.current = window.setTimeout(() => {
+            setIsMounted(false);
+            closeUnmountTimeoutRef.current = null;
+        }, INLINE_PANEL_CLOSE_UNMOUNT_DELAY_MS);
+    }, [clearCloseUnmountDelay, clearVisualTransitionFallback, emitState]);
 
     useEffect(() => {
+        const wasOpen = openRef.current;
+        openRef.current = open;
+
         if (!isInline) {
+            clearCloseUnmountDelay();
             setIsMounted(open);
             setInlinePhase(open ? 'open' : 'closed');
             emitState(open ? 'open' : 'closed');
@@ -253,8 +284,12 @@ const useInlinePanelPresence = (
         let frameId: number | null = null;
 
         if (open) {
+            clearCloseUnmountDelay();
             setIsMounted(true);
-            if (!isMounted && disableInitialInlineAnimation) {
+            if (
+                disableInitialInlineAnimation ||
+                (wasOpen && inlinePhaseRef.current === 'open')
+            ) {
                 setInlinePhase('open');
                 emitState('open');
                 return;
@@ -268,7 +303,7 @@ const useInlinePanelPresence = (
                     finishInlineTransition('open');
                 }, INLINE_PANEL_TRANSITION_FALLBACK_MS);
             });
-        } else if (isMounted) {
+        } else if (isMountedRef.current) {
             setInlinePhase('closing');
             emitState('closing');
             clearVisualTransitionFallback();
@@ -283,12 +318,12 @@ const useInlinePanelPresence = (
             }
         };
     }, [
+        clearCloseUnmountDelay,
         clearVisualTransitionFallback,
         disableInitialInlineAnimation,
         emitState,
         finishInlineTransition,
         isInline,
-        isMounted,
         open,
     ]);
 
@@ -319,13 +354,17 @@ const useInlinePanelPresence = (
         };
     }, [finishInlineTransition, isInline, isMounted, open]);
 
-    useEffect(() => () => clearVisualTransitionFallback(), [clearVisualTransitionFallback]);
+    useEffect(() => () => {
+        clearVisualTransitionFallback();
+        clearCloseUnmountDelay();
+    }, [clearCloseUnmountDelay, clearVisualTransitionFallback]);
 
     return {
         isMounted: isInline ? isMounted : open,
         dataState: isInline ? (inlinePhase === 'open' ? 'open' : 'closed') : undefined,
         inlinePhase: isInline ? inlinePhase : (open ? 'open' : 'closed'),
         panelRef,
+        visualRef,
     };
 };
 
@@ -341,7 +380,7 @@ const resolveInlineWidth = (width: string) => {
         case 'w-screen':
             return '100vw';
         default:
-            return '380px';
+            return `${DEFAULT_INLINE_ASIDE_PANEL_WIDTH_PX}px`;
     }
 };
 
@@ -357,7 +396,7 @@ export const AsidePanelStack: React.FC<AsidePanelStackProps> = ({
     onInlineAnimationStateChange,
 }) => {
     const [stack, setStack] = useState<AsideContentItem[]>([initialItem]);
-    const { isMounted, dataState, inlinePhase, panelRef } = useInlinePanelPresence(
+    const { isMounted, dataState, inlinePhase, panelRef, visualRef } = useInlinePanelPresence(
         open,
         layout,
         disableInitialInlineAnimation,
@@ -425,6 +464,7 @@ export const AsidePanelStack: React.FC<AsidePanelStackProps> = ({
                 data-inline-phase={layout === 'inline' ? inlinePhase : undefined}
                 aria-hidden={layout === 'inline' ? !open : undefined}>
                 <div
+                    ref={visualRef}
                     className={cn(
                         "h-full min-h-0 flex flex-col",
                         layout === 'inline' && "overflow-hidden split-panel-visual border-l border-border/60 bg-background shadow-[-10px_0_20px_-12px_hsl(var(--foreground)/0.22)]"
@@ -463,7 +503,7 @@ export const AsidePanel: React.FC<AsidePanelProps> = ({
     disableInitialInlineAnimation = false,
     onInlineAnimationStateChange,
 }) => {
-    const { isMounted, dataState, inlinePhase, panelRef } = useInlinePanelPresence(
+    const { isMounted, dataState, inlinePhase, panelRef, visualRef } = useInlinePanelPresence(
         open,
         layout,
         disableInitialInlineAnimation,
@@ -500,6 +540,7 @@ export const AsidePanel: React.FC<AsidePanelProps> = ({
         data-inline-phase={layout === 'inline' ? inlinePhase : undefined}
         aria-hidden={layout === 'inline' ? !open : undefined}>
             <div
+                ref={visualRef}
                 className={cn(
                     "h-full min-h-0 flex flex-col",
                     layout === 'inline' && "overflow-hidden split-panel-visual border-l border-border/60 bg-background shadow-[-10px_0_20px_-12px_hsl(var(--foreground)/0.22)]"
