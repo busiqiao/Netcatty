@@ -29,7 +29,7 @@ import {
   Usb,
   X,
 } from "lucide-react";
-import React, { Suspense, lazy, memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../application/i18n/I18nProvider";
 import { useStoredViewMode } from "../application/state/useStoredViewMode";
 import { useStoredBoolean } from "../application/state/useStoredBoolean";
@@ -97,7 +97,7 @@ import { TagFilterDropdown } from "./ui/tag-filter-dropdown";
 import { toast } from "./ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "./ui/tooltip";
 import { Badge } from "./ui/badge";
-import { INLINE_ASIDE_PANEL_ANIMATION_MS, type InlinePanelAnimationState } from "./ui/aside-panel";
+import { INLINE_ASIDE_PANEL_ANIMATION_MS } from "./ui/aside-panel";
 import { HotkeyScheme, KeyBinding } from "../domain/models";
 
 const LazyProtocolSelectDialog = lazy(() => import("./ProtocolSelectDialog"));
@@ -108,13 +108,6 @@ export type VaultSection = "hosts" | "keys" | "snippets" | "port" | "knownhosts"
 type DropTarget =
   | { kind: "root" }
   | { kind: "group"; path: string };
-
-type CardRectSnapshot = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
 
 const useDeferredPanelPresence = (open: boolean, skipCloseDelay = false) => {
   const [present, setPresent] = useState(open);
@@ -303,108 +296,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
   const mainHostsGridRef = useRef<HTMLDivElement>(null);
   const groupedHostsGridRef = useRef<HTMLDivElement>(null);
-  const pendingMainHostsCardRectsRef = useRef<Map<string, CardRectSnapshot> | null>(null);
-  const [mainHostsLockedWidth, setMainHostsLockedWidth] = useState<number | null>(null);
-  const [isMainHostsFrozen, setIsMainHostsFrozen] = useState(false);
-  const mainHostsFreezeTimeoutRef = useRef<number | null>(null);
-  const mainHostsFreezeReleaseFrameRef = useRef<number | null>(null);
-  const mainHostsFreezeSecondReleaseFrameRef = useRef<number | null>(null);
-
-  const clearMainHostsFreezeTimers = useCallback(() => {
-    if (mainHostsFreezeTimeoutRef.current !== null) {
-      window.clearTimeout(mainHostsFreezeTimeoutRef.current);
-      mainHostsFreezeTimeoutRef.current = null;
-    }
-    if (mainHostsFreezeReleaseFrameRef.current !== null) {
-      window.cancelAnimationFrame(mainHostsFreezeReleaseFrameRef.current);
-      mainHostsFreezeReleaseFrameRef.current = null;
-    }
-    if (mainHostsFreezeSecondReleaseFrameRef.current !== null) {
-      window.cancelAnimationFrame(mainHostsFreezeSecondReleaseFrameRef.current);
-      mainHostsFreezeSecondReleaseFrameRef.current = null;
-    }
-  }, []);
-
-  const getActiveHostsCardsContainer = useCallback(() => {
-    if (sortMode === "group") {
-      return groupedHostsGridRef.current;
-    }
-    return mainHostsGridRef.current;
-  }, [sortMode]);
-
-  const finishMainHostsFreeze = useCallback(() => {
-    if (currentSection !== "hosts" || viewMode !== "grid") {
-      setMainHostsLockedWidth(null);
-      setIsMainHostsFrozen(false);
-      clearMainHostsFreezeTimers();
-      return;
-    }
-
-    clearMainHostsFreezeTimers();
-    mainHostsFreezeReleaseFrameRef.current = window.requestAnimationFrame(() => {
-      mainHostsFreezeSecondReleaseFrameRef.current = window.requestAnimationFrame(() => {
-        const gridEl = getActiveHostsCardsContainer();
-        if (!gridEl) {
-          setMainHostsLockedWidth(null);
-          setIsMainHostsFrozen(false);
-          mainHostsFreezeReleaseFrameRef.current = null;
-          mainHostsFreezeSecondReleaseFrameRef.current = null;
-          return;
-        }
-
-        const rects = new Map<string, CardRectSnapshot>();
-        gridEl.querySelectorAll<HTMLElement>("[data-host-card-id]").forEach((cardEl) => {
-          const cardId = cardEl.dataset.hostCardId;
-          if (!cardId) return;
-          const rect = cardEl.getBoundingClientRect();
-          rects.set(cardId, {
-            left: rect.left,
-            top: rect.top,
-            width: rect.width,
-            height: rect.height,
-          });
-        });
-
-        pendingMainHostsCardRectsRef.current = rects;
-        setMainHostsLockedWidth(null);
-        setIsMainHostsFrozen(false);
-        mainHostsFreezeReleaseFrameRef.current = null;
-        mainHostsFreezeSecondReleaseFrameRef.current = null;
-      });
-    });
-  }, [clearMainHostsFreezeTimers, currentSection, getActiveHostsCardsContainer, viewMode]);
-
-  const captureMainHostsFreeze = useCallback(() => {
-    if (currentSection !== "hosts" || viewMode !== "grid") {
-      setMainHostsLockedWidth(null);
-      setIsMainHostsFrozen(false);
-      clearMainHostsFreezeTimers();
-      return;
-    }
-
-    const gridEl = getActiveHostsCardsContainer();
-    if (!gridEl) return;
-
-    const currentWidth = gridEl.getBoundingClientRect().width;
-
-    clearMainHostsFreezeTimers();
-    pendingMainHostsCardRectsRef.current = null;
-    setMainHostsLockedWidth(currentWidth);
-    setIsMainHostsFrozen(true);
-
-    mainHostsFreezeTimeoutRef.current = window.setTimeout(() => {
-      finishMainHostsFreeze();
-    }, INLINE_ASIDE_PANEL_ANIMATION_MS + 80);
-  }, [clearMainHostsFreezeTimers, currentSection, finishMainHostsFreeze, getActiveHostsCardsContainer, viewMode]);
-
-  useEffect(() => () => clearMainHostsFreezeTimers(), [clearMainHostsFreezeTimers]);
-
-  const handleInlinePanelAnimationStateChange = useCallback((state: InlinePanelAnimationState) => {
-    if (state !== "open" && state !== "closed") {
-      return;
-    }
-    finishMainHostsFreeze();
-  }, [finishMainHostsFreeze]);
 
   // Host panel state (local to hosts section)
   const [isHostPanelOpen, setIsHostPanelOpen] = useState(false);
@@ -425,22 +316,20 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, []);
 
   const openHostPanel = useCallback((host: Host | null, groupPath: string | null = null) => {
-    captureMainHostsFreeze();
     clearPendingHostPanelReset();
     setEditingHost(host);
     setNewHostGroupPath(groupPath);
     setIsHostPanelOpen(true);
-  }, [captureMainHostsFreeze, clearPendingHostPanelReset]);
+  }, [clearPendingHostPanelReset]);
 
   const closeHostPanel = useCallback(() => {
-    captureMainHostsFreeze();
     setIsHostPanelOpen(false);
     clearPendingHostPanelReset();
     hostPanelResetTimeoutRef.current = window.setTimeout(() => {
       clearHostPanelDraft();
       hostPanelResetTimeoutRef.current = null;
     }, INLINE_ASIDE_PANEL_ANIMATION_MS);
-  }, [captureMainHostsFreeze, clearHostPanelDraft, clearPendingHostPanelReset]);
+  }, [clearHostPanelDraft, clearPendingHostPanelReset]);
 
   // Close host panel if the host being edited was deleted.
   // Track previous host IDs so we only close for actual deletions, not for
@@ -488,15 +377,13 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   }, []);
 
   const openGroupPanel = useCallback((groupPath: string) => {
-    captureMainHostsFreeze();
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
     setEditingGroupPath(groupPath);
     setIsGroupPanelOpen(true);
-  }, [captureMainHostsFreeze, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+  }, [clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
 
   const closeGroupPanel = useCallback(() => {
-    captureMainHostsFreeze();
     setIsGroupPanelOpen(false);
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
@@ -504,10 +391,9 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       clearGroupPanelDraft();
       groupPanelResetTimeoutRef.current = null;
     }, INLINE_ASIDE_PANEL_ANIMATION_MS);
-  }, [captureMainHostsFreeze, clearGroupPanelDraft, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
+  }, [clearGroupPanelDraft, clearPendingGroupPanelOpen, clearPendingGroupPanelReset]);
 
   const switchHostPanelToGroup = useCallback((groupPath: string) => {
-    captureMainHostsFreeze();
     clearPendingHostPanelReset();
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
@@ -517,7 +403,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     setEditingGroupPath(groupPath);
     setIsGroupPanelOpen(true);
   }, [
-    captureMainHostsFreeze,
     clearHostPanelDraft,
     clearPendingGroupPanelOpen,
     clearPendingGroupPanelReset,
@@ -525,7 +410,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   ]);
 
   const switchGroupPanelToHost = useCallback((host: Host | null, groupPath: string | null = null) => {
-    captureMainHostsFreeze();
     clearPendingHostPanelReset();
     clearPendingGroupPanelReset();
     clearPendingGroupPanelOpen();
@@ -536,7 +420,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     setNewHostGroupPath(groupPath);
     setIsHostPanelOpen(true);
   }, [
-    captureMainHostsFreeze,
     clearGroupPanelDraft,
     clearPendingGroupPanelOpen,
     clearPendingGroupPanelReset,
@@ -1248,71 +1131,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     [displayedHosts, selectedGroupPath, pinnedRecentIds],
   );
 
-  useLayoutEffect(() => {
-    if (currentSection !== "hosts" || viewMode !== "grid" || sortMode === "group") {
-      pendingMainHostsCardRectsRef.current = null;
-      return;
-    }
-
-    if (isMainHostsFrozen) return;
-
-    const firstRects = pendingMainHostsCardRectsRef.current;
-    if (!firstRects || firstRects.size === 0) return;
-
-    const gridEl = mainHostsGridRef.current;
-    if (!gridEl) return;
-
-    const activeAnimations: Animation[] = [];
-
-    gridEl.querySelectorAll<HTMLElement>("[data-host-card-id]").forEach((cardEl) => {
-      const cardId = cardEl.dataset.hostCardId;
-      if (!cardId) return;
-      const firstRect = firstRects.get(cardId);
-      if (!firstRect) return;
-
-      const lastRect = cardEl.getBoundingClientRect();
-      const deltaX = firstRect.left - lastRect.left;
-      const deltaY = firstRect.top - lastRect.top;
-      const scaleX = firstRect.width / Math.max(lastRect.width, 1);
-      const scaleY = firstRect.height / Math.max(lastRect.height, 1);
-
-      if (
-        Math.abs(deltaX) < 0.5 &&
-        Math.abs(deltaY) < 0.5 &&
-        Math.abs(scaleX - 1) < 0.01 &&
-        Math.abs(scaleY - 1) < 0.01
-      ) {
-        return;
-      }
-
-      activeAnimations.push(
-        cardEl.animate(
-          [
-            {
-              transformOrigin: "top left",
-              transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})`,
-            },
-            {
-              transformOrigin: "top left",
-              transform: "translate(0px, 0px) scale(1, 1)",
-            },
-          ],
-          {
-            duration: 260,
-            easing: "cubic-bezier(0.24, 0.84, 0.32, 1)",
-            fill: "both",
-          },
-        ),
-      );
-    });
-
-    pendingMainHostsCardRectsRef.current = null;
-
-    return () => {
-      activeAnimations.forEach((animation) => animation.cancel());
-    };
-  }, [displayedHosts, currentSection, isMainHostsFrozen, sortMode, viewMode]);
-
   // For tree view: apply search, tag filter, and sorting, but not group filtering
   const treeViewHosts = useMemo(() => {
     let filtered = hosts;
@@ -1826,30 +1644,19 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   );
   const [isHostsHeaderCompact, setIsHostsHeaderCompact] = useState(isHostsSidePanelActive);
   useEffect(() => {
-    if (isMainHostsFrozen) return;
     setIsHostsHeaderCompact(isHostsSidePanelActive);
-  }, [isHostsSidePanelActive, isMainHostsFrozen]);
+  }, [isHostsSidePanelActive]);
   const disableHostPanelInitialInlineAnimation = isSwitchingGroupToHost;
   const disableGroupPanelInitialInlineAnimation = isSwitchingHostToGroup;
   const hostsHeaderTransitionClass =
     "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[430ms] ease-[cubic-bezier(0.24,0.84,0.32,1)]";
-  const hostsHeaderMotionClass = isMainHostsFrozen
-    ? "transition-none"
-    : hostsHeaderTransitionClass;
+  const hostsHeaderMotionClass = hostsHeaderTransitionClass;
   const hasSearchValue = search.trim().length > 0;
   const splitViewGridStyle = {
     gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 220px), 1fr))",
   };
-  const hostsGridAnimatedStyle =
-    viewMode === "grid"
-      ? (mainHostsLockedWidth !== null
-          ? { ...splitViewGridStyle, width: `${mainHostsLockedWidth}px` }
-          : splitViewGridStyle)
-      : undefined;
-  const frozenHostsGridClass =
-    viewMode === "grid" && isMainHostsFrozen
-      ? "overflow-clip [overflow-clip-margin:12px]"
-      : undefined;
+  const hostsGridAnimatedStyle = viewMode === "grid" ? splitViewGridStyle : undefined;
+  const frozenHostsGridClass = undefined;
 
   const isSameDropTarget = useCallback((a: DropTarget | null, b: DropTarget | null) => {
     if (!a || !b) return a === b;
@@ -2599,6 +2406,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                             <ContextMenu key={host.id}>
                               <ContextMenuTrigger>
                                 <div
+                                  data-host-card-id={host.id}
                                   className={cn(
                                     "group cursor-pointer relative",
                                     viewMode === "grid"
@@ -2960,6 +2768,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                                   <ContextMenu key={host.id}>
                                     <ContextMenuTrigger>
                                       <div
+                                        data-host-card-id={host.id}
                                         className={cn(
                                           "group cursor-pointer relative",
                                           viewMode === "grid"
@@ -3104,6 +2913,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                             <ContextMenu key={host.id}>
                               <ContextMenuTrigger>
                                 <div
+                                  data-host-card-id={host.id}
                                   className={cn(
                                     "group cursor-pointer relative",
                                     viewMode === "grid"
@@ -3359,7 +3169,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           onCancel={closeGroupPanel}
           layout="inline"
           disableInitialInlineAnimation={disableGroupPanelInitialInlineAnimation}
-          onInlineAnimationStateChange={handleInlinePanelAnimationStateChange}
         />
       )}
 
@@ -3397,7 +3206,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           }}
           layout="inline"
           disableInitialInlineAnimation={disableHostPanelInitialInlineAnimation}
-          onInlineAnimationStateChange={handleInlinePanelAnimationStateChange}
         />
       )}
 
@@ -3417,7 +3225,6 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
           onCancel={closeHostPanel}
           layout="inline"
           disableInitialInlineAnimation={disableHostPanelInitialInlineAnimation}
-          onInlineAnimationStateChange={handleInlinePanelAnimationStateChange}
         />
       )}
 
