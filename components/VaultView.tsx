@@ -1942,7 +1942,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const disableHostPanelInitialInlineAnimation = isSwitchingGroupToHost;
   const disableGroupPanelInitialInlineAnimation = isSwitchingHostToGroup;
   const hostsHeaderTransitionClass =
-    "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[1100ms] ease-[cubic-bezier(0.42,0,0.58,1)]";
+    "transition-[width,height,padding,gap,margin,opacity,max-width] duration-[400ms] ease-[cubic-bezier(0.42,0,0.58,1)]";
   const hostsHeaderMotionClass = hostsHeaderTransitionClass;
   const hasSearchValue = search.trim().length > 0;
   const splitViewGridStyle = {
@@ -2539,7 +2539,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
         <div
           ref={hostsListRef}
           className={cn(
-            "flex-1 min-w-0 overflow-auto px-4 py-4 space-y-6 transition-[padding] duration-[1100ms] ease-[cubic-bezier(0.42,0,0.58,1)]",
+            "flex-1 min-w-0 overflow-auto px-4 py-4 space-y-6 transition-[padding] duration-[400ms] ease-[cubic-bezier(0.42,0,0.58,1)]",
             isHostsSidePanelActive && "pr-3",
             !isHostsSectionActive && "hidden",
             ghostCards.length > 0 && "ghost-hosts-card-grid-placeholder",

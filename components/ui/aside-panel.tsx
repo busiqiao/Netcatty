@@ -190,7 +190,7 @@ interface AsidePanelStackProps {
 }
 
 export type AsidePanelLayout = 'overlay' | 'inline';
-export const INLINE_ASIDE_PANEL_ANIMATION_MS = 1100;
+export const INLINE_ASIDE_PANEL_ANIMATION_MS = 400;
 export const DEFAULT_INLINE_ASIDE_PANEL_WIDTH_PX = 380;
 export type InlinePanelAnimationState = 'opening' | 'open' | 'closing' | 'closed';
 export type InlinePanelAnimationStateChange = (state: InlinePanelAnimationState) => void;
