@@ -106,32 +106,28 @@
   position: relative;
   width: 0;
   min-width: 0;
-  flex-basis: 0;
+  flex-basis: auto;
   contain: layout paint style;
   overflow: hidden;
-  will-change: width, flex-basis;
+  will-change: width;
   transition:
-    width 1100ms cubic-bezier(0.42, 0, 0.58, 1),
-    flex-basis 1100ms cubic-bezier(0.42, 0, 0.58, 1);
+    width 1100ms cubic-bezier(0.42, 0, 0.58, 1);
 }
 
 .split-panel[data-inline-phase="opening"] {
   width: 0;
   min-width: 0;
-  flex-basis: 0;
   pointer-events: none;
 }
 
 .split-panel[data-inline-phase="open"] {
   width: var(--aside-inline-width);
-  flex-basis: var(--aside-inline-width);
 }
 
 .split-panel[data-inline-phase="closing"],
 .split-panel[data-inline-phase="closed"] {
   width: 0;
   min-width: 0;
-  flex-basis: 0;
   pointer-events: none;
 }
 

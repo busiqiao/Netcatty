@@ -340,7 +340,7 @@ const useInlinePanelPresence = (
         const handleTransitionEnd = (event: TransitionEvent) => {
             if (
                 event.target !== panelEl ||
-                (event.propertyName !== 'width' && event.propertyName !== 'flex-basis')
+                event.propertyName !== 'width'
             ) {
                 return;
             }
