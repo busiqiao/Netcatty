@@ -128,6 +128,7 @@ type GhostCardTransitionBatch = {
   cards: GhostCardTransition[];
   startHeight: number;
   endHeight: number;
+  secondaryGridHeights: Map<string, { startHeight: number; endHeight: number }>;
 };
 
 // Must match the inline details panel width used by Host/Group/Serial details.
@@ -337,6 +338,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     endHeight: number;
   } | null>(null);
   const [ghostHiddenHostIds, setGhostHiddenHostIds] = useState<Set<string>>(new Set());
+  const [secondaryGridHeights, setSecondaryGridHeights] = useState<Map<string, { startHeight: number; endHeight: number }>>(new Map());
 
   const getActiveHostsCardsContainer = useCallback(() => {
     return hostsListRef.current;
@@ -360,6 +362,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     setGhostCardsActive(false);
     setGhostGridTransition(null);
     setGhostHiddenHostIds(new Set());
+    setSecondaryGridHeights(new Map());
   }, []);
 
   const handleInlinePanelAnimationStateChange = useCallback((state: "opening" | "open" | "closing" | "closed") => {
@@ -465,6 +468,20 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     mainAreaEl.appendChild(measurementRoot);
     const endGridHeight = measurementClone.getBoundingClientRect().height;
 
+    // Measure per-grid heights for secondary grids (pinned, recent, groups)
+    const secondaryGridHeights = new Map<string, { startHeight: number; endHeight: number }>();
+    for (const gridKey of ["pinned", "recent", "groups"]) {
+      const realGrid = gridEl.querySelector(`[data-hosts-grid="${gridKey}"]`);
+      const cloneGrid = measurementClone.querySelector(`[data-hosts-grid="${gridKey}"]`);
+      if (realGrid && cloneGrid) {
+        const start = realGrid.getBoundingClientRect().height;
+        const end = cloneGrid.getBoundingClientRect().height;
+        if (Math.abs(start - end) > 0.5) {
+          secondaryGridHeights.set(gridKey, { startHeight: start, endHeight: end });
+        }
+      }
+    }
+
     const nextGhostCards: GhostCardTransition[] = [];
 
     measurementClone.querySelectorAll<HTMLElement>("[data-vault-card-id]").forEach((cardEl) => {
@@ -510,6 +527,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
       cards: nextGhostCards,
       startHeight: startGridHeight,
       endHeight: endGridHeight,
+      secondaryGridHeights,
     };
   }, [
     clearGhostCardTransition,
@@ -1401,6 +1419,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
     });
     setGhostHiddenHostIds(new Set(nextGhostBatch.cards.map(({ id }) => id)));
     setGhostCardsActive(false);
+    setSecondaryGridHeights(nextGhostBatch.secondaryGridHeights);
 
     ghostActivationFrameRef.current = window.requestAnimationFrame(() => {
       setGhostCardsActive(true);
@@ -1964,6 +1983,16 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
   const ghostGridPlaceholderClass = ghostGridTransition
     ? "ghost-hosts-card-grid-placeholder"
     : undefined;
+  const secondaryGridStyleFor = useCallback((key: string): React.CSSProperties | undefined => {
+    const entry = secondaryGridHeights.get(key);
+    if (!entry) return undefined;
+    return {
+      height: ghostCardsActive ? entry.endHeight : entry.startHeight,
+      minHeight: ghostCardsActive ? entry.endHeight : entry.startHeight,
+      overflow: "hidden",
+      transition: `height ${INLINE_ASIDE_PANEL_ANIMATION_MS}ms cubic-bezier(0.42, 0, 0.58, 1), min-height ${INLINE_ASIDE_PANEL_ANIMATION_MS}ms cubic-bezier(0.42, 0, 0.58, 1)`,
+    };
+  }, [secondaryGridHeights, ghostCardsActive]);
   const mainHostsGridAnimatedStyle =
     viewMode === "grid"
       ? ({
@@ -2617,13 +2646,15 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         <Pin size={14} className="shrink-0 -translate-y-[1px]" />
                         {t("vault.hosts.pinned")}
                       </h3>
-                      <div className={cn(
-                        viewMode === "grid"
-                          ? "grid gap-3"
-                          : "flex flex-col gap-0",
-                        frozenHostsGridClass,
-                      )}
-                      style={hostsGridAnimatedStyle}>
+                      <div
+                        data-hosts-grid="pinned"
+                        className={cn(
+                          viewMode === "grid"
+                            ? "grid gap-3"
+                            : "flex flex-col gap-0",
+                          frozenHostsGridClass,
+                        )}
+                        style={{ ...hostsGridAnimatedStyle, ...secondaryGridStyleFor("pinned") }}>
                         {pinnedHosts.map((host) => {
                           const safeHost = sanitizeHost(host);
                           const effectiveDistro = getEffectiveHostDistro(safeHost);
@@ -2722,13 +2753,15 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                         <Clock size={14} className="shrink-0 -translate-y-[1px]" />
                         {t("vault.hosts.recentlyConnected")}
                       </h3>
-                      <div className={cn(
-                        viewMode === "grid"
-                          ? "grid gap-3"
-                          : "flex flex-col gap-0",
-                        frozenHostsGridClass,
-                      )}
-                      style={hostsGridAnimatedStyle}>
+                      <div
+                        data-hosts-grid="recent"
+                        className={cn(
+                          viewMode === "grid"
+                            ? "grid gap-3"
+                            : "flex flex-col gap-0",
+                          frozenHostsGridClass,
+                        )}
+                        style={{ ...hostsGridAnimatedStyle, ...secondaryGridStyleFor("recent") }}>
                         {recentHosts.map((host) => {
                           const safeHost = sanitizeHost(host);
                           const effectiveDistro = getEffectiveHostDistro(safeHost);
@@ -2827,6 +2860,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                   )}
                   {viewMode !== "tree" && (
                     <div
+                      data-hosts-grid="groups"
                       className={cn(
                         displayedGroups.length === 0 ? "hidden" : "",
                         viewMode === "grid"
@@ -2834,7 +2868,7 @@ const VaultViewInner: React.FC<VaultViewProps> = ({
                           : "flex flex-col gap-0",
                         frozenHostsGridClass,
                       )}
-                      style={hostsGridAnimatedStyle}
+                      style={{ ...hostsGridAnimatedStyle, ...secondaryGridStyleFor("groups") }}
                       onDragOver={(e) => {
                         e.preventDefault();
                       }}
